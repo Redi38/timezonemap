@@ -15,9 +15,10 @@ h1{margin:0;font-size:20px;font-weight:650;letter-spacing:-.01em}
 #wrap{position:relative;flex:1;min-height:0}
 canvas{display:block;touch-action:none;cursor:grab}
 canvas:active{cursor:grabbing}
-#tip{position:absolute;pointer-events:none;display:none;background:var(--chip);border:1px solid var(--line);border-radius:8px;padding:8px 11px;font-size:13px;max-width:290px;box-shadow:0 6px 20px #0004}
+#tip{position:absolute;pointer-events:none;display:none;background:var(--chip);border:1px solid var(--line);border-radius:8px;padding:8px 11px;font-size:13px;max-width:330px;box-shadow:0 6px 20px #0004}
 #tip b{font-size:14px}#tip .t{font-size:20px;font-weight:650;font-variant-numeric:tabular-nums}#tip .m{color:var(--mut);font-size:12px}
 #tip .d{margin-top:7px;padding-top:7px;border-top:1px solid var(--line);font-size:12px;line-height:1.5}#tip .d b{font-size:12px}
+#tip.big{width:560px;max-width:calc(100% - 8px)}#tip .cols{columns:250px;column-gap:16px}#tip .r{break-inside:avoid}#tip .r{margin-top:6px;padding-top:6px;border-top:1px solid var(--line);font-size:12px;line-height:1.4}#tip .r .t2{font-size:15px;font-weight:650;font-variant-numeric:tabular-nums}
 #bar{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;padding:0 14px 8px}
 button{background:var(--chip);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:6px 12px;font:inherit;cursor:pointer}
 button:focus-visible{outline:2px solid #4da3ff;outline-offset:2px}
@@ -54,10 +55,21 @@ function dstInfo(tz){const c=dstc[tz];if(c&&Date.now()<c.exp)return c;
  return dstc[tz]={dst:true,exp,sOff:up.to,wOff:dn.to,sName:zname(tz,up.t+DAY),wName:zname(tz,dn.t+DAY),next:day.format(tr[0].t)}}
 function dstHtml(f){const i=dstInfo(f.tz);
  if(i.special)return `<div class="d"><b>Observes daylight saving time</b><br>Morocco keeps ${fo(1)} most of the year and switches back to ${fo(0)} during Ramadan.</div>`;
- if(!i.dst){const other=f.z.some(z=>z!==f.tz&&dstInfo(z).dst);
-  return `<div class="d m">${other?'No daylight saving time in this zone, but other time zones in this country observe it.':'No daylight saving time · '+fo(f.off)+' all year.'}</div>`}
+ if(!i.dst)return `<div class="d m">No daylight saving time · ${fo(f.off)} all year.</div>`;
  const summer=Math.abs(f.off-i.sOff)<1e-6;
  return `<div class="d"><b>Observes daylight saving time</b><br>Summer (DST): ${fo(i.sOff)}${i.sName?' · '+i.sName:''}<br>Winter: ${fo(i.wOff)}${i.wName?' · '+i.wName:''}<div class="m">Currently on ${summer?'daylight saving':'standard'} time · clocks change ${i.next}</div></div>`}
+const dayFmt={};
+function dayStr(tz){return(dayFmt[tz]||(dayFmt[tz]=new Intl.DateTimeFormat('en-GB',{timeZone:tz,weekday:'short',day:'numeric',month:'short'}))).format(now)}
+// One entry per distinct (current offset, DST rule); zones that behave identically are merged.
+function zoneGroups(f){const m=new Map();
+ for(const z of f.z){const o=offOf(z,now),i=dstInfo(z),k=o+'|'+(i.special?'m':i.dst?i.sOff+'/'+i.wOff:'-');
+  let g=m.get(k);if(!g){g={tz:z,off:o,i,zs:[]};m.set(k,g)}g.zs.push(z)}
+ return[...m.values()].sort((a,b)=>a.off-b.off)}
+function rowHtml(g,date){const city=z=>z.split('/').pop().replace(/_/g,' '),i=g.i,
+ t=new Intl.DateTimeFormat('en-GB',{timeZone:g.tz,hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:h12}).format(now),
+ names=g.zs.slice(0,3).map(city).join(', ')+(g.zs.length>3?' +'+(g.zs.length-3)+' more':''),
+ dst=i.special?`DST: ${fo(1)}, ${fo(0)} during Ramadan`:i.dst?`DST: summer ${fo(i.sOff)} · winter ${fo(i.wOff)} · clocks change ${i.next}`:'No daylight saving time';
+ return `<div class="r"><span class="t2">${t}</span> ${fo(g.off)}${date?' · '+date:''}<div class="m">${names}<br>${dst}</div></div>`}
 const cache={};
 function mk(tz){const key=tz+h12;return cache[key]||(cache[key]=new Intl.DateTimeFormat('en-GB',{timeZone:tz,hour:'2-digit',minute:'2-digit',hour12:h12}))}
 function fo(o){const a=Math.abs(o),h=Math.floor(a),m=Math.round((a-h)*60);return 'UTC'+(o<0?'−':'+')+h+(m?':'+String(m).padStart(2,'0'):'')}
@@ -87,12 +99,15 @@ function draw(){ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,W,H);proj.tr
   ctx.strokeText(f.t,p[0],p[1]);ctx.fillText(f.t,p[0],p[1]);
   if(big){ctx.font='10px system-ui,sans-serif';ctx.lineWidth=2.5;const n=f.properties.n;ctx.strokeText(n,p[0],p[1]+13);ctx.fillStyle='rgba(235,242,255,.85)';ctx.fillText(n,p[0],p[1]+13)}}
  tipUpdate()}
+let gs;
 function tipUpdate(){if(!hov||!mouse||drag){tip.style.display='none';tkey='';return}
- const key=hov.properties.n+now.getSeconds();if(key!==tkey){tkey=key;
+ const key=hov.properties.n+now.getSeconds();if(key!==tkey){tkey=key;tip.className='';
   if(!hov.tz)tip.innerHTML=`<b>${hov.properties.n}</b><div class="m">No official local time</div>`;
+  else if(hov.z.length>1&&(gs=zoneGroups(hov)).length>1){const ds=gs.map(g=>dayStr(g.tz)),same=ds.every(x=>x===ds[0]);
+   tip.className=gs.length>5?'big':'';tip.innerHTML=`<b>${hov.properties.n}</b> <span class="m">${gs.length} time zones${same?' · '+ds[0]:''}</span><div class="cols">`+gs.map((g,j)=>rowHtml(g,same?'':ds[j])).join('')+'</div>'}
   else{const d=new Intl.DateTimeFormat('en-GB',{timeZone:hov.tz,weekday:'short',day:'numeric',month:'short'}).format(now);
    const t=new Intl.DateTimeFormat('en-GB',{timeZone:hov.tz,hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:h12}).format(now);
-   tip.innerHTML=`<b>${hov.properties.n}</b><div class="t">${t}</div><div class="m">${d} · ${fo(hov.off)}<br>${hov.tz.replace(/_/g,' ')}${hov.z.length>1?'<br>Several time zones — showing the one nearest the country’s centre':''}</div>${dstHtml(hov)}`}}
+   tip.innerHTML=`<b>${hov.properties.n}</b><div class="t">${t}</div><div class="m">${d} · ${fo(hov.off)}<br>${hov.tz.replace(/_/g,' ')}</div>${dstHtml(hov)}`}}
  tip.style.display='block';const w=tip.offsetWidth,h=tip.offsetHeight;tip.style.left=Math.max(4,Math.min(W-w-4,mouse[0]+14))+'px';tip.style.top=Math.max(4,Math.min(H-h-4,mouse[1]+14))+'px'}
 function pickAt(x,y){if(Math.hypot(x-W/2,y-H/2)>k)return null;const ll=proj.invert([x,y]);return ll?F.find(f=>d3.geoContains(f,ll))||null:null}
 cv.addEventListener('pointerdown',e=>{cv.setPointerCapture(e.pointerId);const r=cv.getBoundingClientRect();mouse=[e.clientX-r.left,e.clientY-r.top];drag={x:e.clientX,y:e.clientY,m:0}});
