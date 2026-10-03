@@ -15,8 +15,9 @@ h1{margin:0;font-size:20px;font-weight:650;letter-spacing:-.01em}
 #wrap{position:relative;flex:1;min-height:0}
 canvas{display:block;touch-action:none;cursor:grab}
 canvas:active{cursor:grabbing}
-#tip{position:absolute;pointer-events:none;display:none;background:var(--chip);border:1px solid var(--line);border-radius:8px;padding:8px 11px;font-size:13px;max-width:240px;box-shadow:0 6px 20px #0004}
+#tip{position:absolute;pointer-events:none;display:none;background:var(--chip);border:1px solid var(--line);border-radius:8px;padding:8px 11px;font-size:13px;max-width:290px;box-shadow:0 6px 20px #0004}
 #tip b{font-size:14px}#tip .t{font-size:20px;font-weight:650;font-variant-numeric:tabular-nums}#tip .m{color:var(--mut);font-size:12px}
+#tip .d{margin-top:7px;padding-top:7px;border-top:1px solid var(--line);font-size:12px;line-height:1.5}#tip .d b{font-size:12px}
 #bar{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;padding:0 14px 8px}
 button{background:var(--chip);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:6px 12px;font:inherit;cursor:pointer}
 button:focus-visible{outline:2px solid #4da3ff;outline-offset:2px}
@@ -36,7 +37,27 @@ const DATA={"type":"FeatureCollection","features":[{"type":"Feature","properties
 const F=DATA.features,cv=document.getElementById('g'),ctx=cv.getContext('2d'),wrap=document.getElementById('wrap'),tip=document.getElementById('tip');
 const proj=d3.geoOrthographic().clipAngle(90).precision(.5),path=d3.geoPath(proj,ctx);
 let W,H,k0=0,k=1,dpr=1,rot=[new Date().getTimezoneOffset()/4,-20],h12=false,auto=true,drag=null,hov=null,mouse=null,now=new Date(),tkey='';
-function offOf(tz,d){const s=new Intl.DateTimeFormat('en',{timeZone:tz,timeZoneName:'longOffset'}).formatToParts(d).find(p=>p.type==='timeZoneName').value;const m=s.match(/([+-])(\d\d):(\d\d)/);return m?(m[1]==='-'?-1:1)*(+m[2]+ +m[3]/60):0}
+const ofc={};
+function offOf(tz,d){const s=(ofc[tz]||(ofc[tz]=new Intl.DateTimeFormat('en',{timeZone:tz,timeZoneName:'longOffset'}))).formatToParts(d).find(p=>p.type==='timeZoneName').value;const m=s.match(/([+-])(\d\d):(\d\d)/);return m?(m[1]==='-'?-1:1)*(+m[2]+ +m[3]/60):0}
+const MOROCCO=['Africa/Casablanca','Africa/El_Aaiun'],dstc={};
+function zname(tz,t){const n=new Intl.DateTimeFormat('en',{timeZone:tz,timeZoneName:'long'}).formatToParts(t).find(p=>p.type==='timeZoneName').value;return /^GMT/.test(n)?'':n}
+// Looks ~13 months ahead for clock changes. A zone observes DST when its offset moves both up and down in that window.
+function dstInfo(tz){const c=dstc[tz];if(c&&Date.now()<c.exp)return c;
+ const t0=Date.now(),DAY=864e5,tr=[];let pt=t0,po=offOf(tz,new Date(pt));
+ for(let i=1;i<=58;i++){const t=t0+i*7*DAY,o=offOf(tz,new Date(t));
+  if(o!==po){let a=pt,b=t;while(b-a>6e4){const m=Math.floor((a+b)/2);if(offOf(tz,new Date(m))===po)a=m;else b=m}tr.push({t:b,from:po,to:o})}
+  pt=t;po=o}
+ const up=tr.find(x=>x.to>x.from),dn=tr.find(x=>x.to<x.from),exp=Math.min(t0+6*36e5,tr.length?tr[0].t:Infinity);
+ if(MOROCCO.includes(tz))return dstc[tz]={dst:true,special:true,exp};
+ if(!up||!dn)return dstc[tz]={dst:false,exp};
+ const day=new Intl.DateTimeFormat('en-GB',{timeZone:tz,day:'numeric',month:'short'});
+ return dstc[tz]={dst:true,exp,sOff:up.to,wOff:dn.to,sName:zname(tz,up.t+DAY),wName:zname(tz,dn.t+DAY),next:day.format(tr[0].t)}}
+function dstHtml(f){const i=dstInfo(f.tz);
+ if(i.special)return `<div class="d"><b>Observes daylight saving time</b><br>Morocco keeps ${fo(1)} most of the year and switches back to ${fo(0)} during Ramadan.</div>`;
+ if(!i.dst){const other=f.z.some(z=>z!==f.tz&&dstInfo(z).dst);
+  return `<div class="d m">${other?'No daylight saving time in this zone, but other time zones in this country observe it.':'No daylight saving time · '+fo(f.off)+' all year.'}</div>`}
+ const summer=Math.abs(f.off-i.sOff)<1e-6;
+ return `<div class="d"><b>Observes daylight saving time</b><br>Summer (DST): ${fo(i.sOff)}${i.sName?' · '+i.sName:''}<br>Winter: ${fo(i.wOff)}${i.wName?' · '+i.wName:''}<div class="m">Currently on ${summer?'daylight saving':'standard'} time · clocks change ${i.next}</div></div>`}
 const cache={};
 function mk(tz){const key=tz+h12;return cache[key]||(cache[key]=new Intl.DateTimeFormat('en-GB',{timeZone:tz,hour:'2-digit',minute:'2-digit',hour12:h12}))}
 function fo(o){const a=Math.abs(o),h=Math.floor(a),m=Math.round((a-h)*60);return 'UTC'+(o<0?'−':'+')+h+(m?':'+String(m).padStart(2,'0'):'')}
@@ -71,7 +92,7 @@ function tipUpdate(){if(!hov||!mouse||drag){tip.style.display='none';tkey='';ret
   if(!hov.tz)tip.innerHTML=`<b>${hov.properties.n}</b><div class="m">No official local time</div>`;
   else{const d=new Intl.DateTimeFormat('en-GB',{timeZone:hov.tz,weekday:'short',day:'numeric',month:'short'}).format(now);
    const t=new Intl.DateTimeFormat('en-GB',{timeZone:hov.tz,hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:h12}).format(now);
-   tip.innerHTML=`<b>${hov.properties.n}</b><div class="t">${t}</div><div class="m">${d} · ${fo(hov.off)}<br>${hov.tz.replace(/_/g,' ')}${hov.z.length>1?'<br>Several time zones — showing the one nearest the country’s centre':''}</div>`}}
+   tip.innerHTML=`<b>${hov.properties.n}</b><div class="t">${t}</div><div class="m">${d} · ${fo(hov.off)}<br>${hov.tz.replace(/_/g,' ')}${hov.z.length>1?'<br>Several time zones — showing the one nearest the country’s centre':''}</div>${dstHtml(hov)}`}}
  tip.style.display='block';const w=tip.offsetWidth,h=tip.offsetHeight;tip.style.left=Math.max(4,Math.min(W-w-4,mouse[0]+14))+'px';tip.style.top=Math.max(4,Math.min(H-h-4,mouse[1]+14))+'px'}
 function pickAt(x,y){if(Math.hypot(x-W/2,y-H/2)>k)return null;const ll=proj.invert([x,y]);return ll?F.find(f=>d3.geoContains(f,ll))||null:null}
 cv.addEventListener('pointerdown',e=>{cv.setPointerCapture(e.pointerId);const r=cv.getBoundingClientRect();mouse=[e.clientX-r.left,e.clientY-r.top];drag={x:e.clientX,y:e.clientY,m:0}});
