@@ -175,7 +175,7 @@ def densify(coords, step):
         out.append(b)
     return out
 
-def ring_out(r, clockwise):
+def ring_out(r, clockwise, keep_pole=False):
     pts = []
     coords = densify(list(r.coords), 0.25) if DETAIL else r.coords
     for x, y in coords:
@@ -188,7 +188,7 @@ def ring_out(r, clockwise):
         return None
     if (ring_area(pts) < 0) != clockwise:
         pts.reverse()
-    if any(abs(q[1]) >= 89.99 for q in pts):
+    if not keep_pole and any(abs(q[1]) >= 89.99 for q in pts):
         # Antarctica: the file closes the ring along the pole, which d3 would stroke as a line from the coast
         # to the pole.  A ring that simply runs round the pole (lon -180 to 180 along the coast) needs no such seam.
         pts = [q for q in pts if abs(q[1]) < 89.99]
@@ -198,14 +198,14 @@ def ring_out(r, clockwise):
             return None
     return pts
 
-def geom_out(g, cw_exterior):
+def geom_out(g, cw_exterior, keep_pole=False):
     """Polygon list in the winding d3 expects: exterior clockwise, holes counter-clockwise."""
     out = []
     for p in polys(g):
-        ext = ring_out(p.exterior, cw_exterior)
+        ext = ring_out(p.exterior, cw_exterior, keep_pole)
         if not ext:
             continue
-        holes = [h for h in (ring_out(i, not cw_exterior) for i in p.interiors) if h]
+        holes = [h for h in (ring_out(i, not cw_exterior, keep_pole) for i in p.interiors) if h]
         out.append([ext] + holes)
     return out
 
@@ -268,13 +268,47 @@ def ne_features():
     return json.load(open(NE_FILE, encoding='utf-8'))['features']
 
 
-def antarctica_feature(cw_exterior):
-    """Antarctica has no time zone, so it carries no zones and the page shows 'No official local time'."""
+# Antarctica has no official time.  The map shows the conventional zones by longitude (a wedge each, meeting at the
+# pole); research stations often keep their own time instead, which the page says in the tooltip.
+ANT_WEDGES = [      # (west lon, east lon, zone)
+    (-180, -150, 'Antarctica/McMurdo'), (-150, -90, 'Etc/GMT+6'), (-90, -67, 'Etc/GMT+4'),
+    (-67, -20, 'Etc/GMT+3'), (-20, 40, 'Etc/UTC'), (40, 60, 'Etc/GMT-3'), (60, 80, 'Etc/GMT-5'),
+    (80, 100, 'Etc/GMT-6'), (100, 115, 'Etc/GMT-7'), (115, 135, 'Etc/GMT-8'), (135, 165, 'Etc/GMT-10'),
+    (165, 180, 'Antarctica/McMurdo'),
+]
+
+def antarctica_geom():
     f = next(f for f in ne_features() if f['properties']['NAME_EN'] == 'Antarctica')
-    g = shapely.make_valid(shape(f['geometry'])).simplify(0.15)
+    g = shapely.make_valid(shape(f['geometry']))
+    return g.simplify(0.006 if DETAIL else 0.15)
+
+def antarctica_parts(g, cw_exterior):
+    """Zone wedges of the Antarctic land; same fields as the other countries' parts."""
+    merged = defaultdict(list)
+    for x0, x1, z in ANT_WEDGES:
+        piece = clean(g.intersection(box(x0, -90, x1, -60)))
+        if not piece.is_empty:
+            merged[z].append(piece)
+    out = []
+    for z, ps in merged.items():
+        u = clean(unary_union(ps))
+        gj = geom_out(u, cw_exterior, keep_pole=True)
+        if not gj:
+            continue
+        if DETAIL:
+            out.append({'z': [z], 'g': gj, 'c': caps(gj)})
+        else:
+            c = label_point(u)
+            out.append({'z': [z], 'g': gj, 'c': c, 'a': float('%.3g' % steradians(u)),
+                        'r': math.ceil(cap_radius(c, u) * 100) / 100})
+    return out
+
+def antarctica_feature(cw_exterior):
+    g = antarctica_geom()
     g = unary_union([p for p in polys(g) if p.area >= 0.05])
-    return {'type': 'Feature', 'properties': {'n': 'Antarctica', 'z': []},
-            'geometry': {'type': 'MultiPolygon', 'coordinates': geom_out(g, cw_exterior)}}
+    parts = antarctica_parts(g, cw_exterior)
+    return {'type': 'Feature', 'properties': {'n': 'Antarctica', 'z': list(dict.fromkeys(z for p in parts for z in p['z']))},
+            'geometry': {'type': 'MultiPolygon', 'coordinates': geom_out(g, cw_exterior)}, 'parts': parts, 'marks': []}
 
 
 def dumps_lines(head, items):
@@ -361,6 +395,7 @@ def main():
         name = f['properties']['n']
         zones = list(dict.fromkeys(f['properties'].get('z', [])))
         had_parts = 'parts' in f
+        ant = (f.get('parts'), f.get('marks'))
         for k in ('parts', 'borders', 'marks'):
             f.pop(k, None)
         if DETAIL:
@@ -369,8 +404,14 @@ def main():
                 continue
             gj = geom_out(ne[name], cw_exterior)
             detail[name] = {'g': gj, 'c': caps(gj)}
+            if name == 'Antarctica':
+                detail[name]['p'] = antarctica_parts(unary_union([p for p in polys(antarctica_geom()) if p.area >= 0.05]), cw_exterior)
+                continue
             if not had_parts:
                 continue
+        if name == 'Antarctica':
+            f['parts'], f['marks'] = ant
+            continue
         if name in EXTRA_ZONES:
             zones = list(dict.fromkeys(zones + EXTRA_ZONES[name]))
             f['properties']['z'] = zones
