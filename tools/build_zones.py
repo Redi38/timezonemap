@@ -17,7 +17,13 @@ so the globe can draw every zone:
 properties.z is trimmed to zones that really exist inside the country.
 
 Usage:  python3 tools/build_zones.py            rewrites site/index.html
-        python3 tools/build_zones.py --check    report only, writes nothing
+        python3 tools/build_zones.py --detail   writes site/detail.json (run it after the line above)
+        add --check to either to report only and write nothing
+
+--detail builds the high-resolution geometry the page loads when zoomed in: Natural Earth 10m
+country outlines (downloaded once into tools/.cache) and the same zone regions rebuilt at a
+fine tolerance and clipped to those outlines.  detail.json maps feature name ->
+{g: polygons, c: cap per polygon, p: [{z, g, c}]} (p only for countries that have zone regions).
 
 Requires: pip install timezonefinder shapely tzdata
 Geometry is timezone-boundary-builder (via timezonefinder).  Its zone names come from
@@ -35,17 +41,25 @@ from collections import defaultdict
 
 import shapely
 import tzdata
-from shapely.geometry import MultiPolygon, Point, Polygon, box
+from shapely.geometry import MultiPolygon, Point, Polygon, box, shape
 from shapely.ops import unary_union
 from timezonefinder import TimezoneFinder
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 HTML = os.path.join(HERE, '..', 'site', 'index.html')
 CHECK = '--check' in sys.argv
+DETAIL = '--detail' in sys.argv
+DETAIL_OUT = os.path.join(HERE, '..', 'site', 'detail.json')
+NE_FILE = os.path.join(HERE, '.cache', 'ne_10m_admin_0_countries.geojson')
+NE_URL = 'https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_admin_0_countries.geojson'
+DET_TOL = 0.006        # degrees (~600 m); detail outlines are simplified by this much
 
 SIMPLIFY = (0.04, 0.15)  # degrees; zone borders are simplified more in bigger countries
 REACH = 0.7            # degrees the regions extend past the country outline
 MIN_AREA = 1e-4        # deg^2; smaller pieces are dropped (scaled down for tiny islands)
+DIGITS = 2             # decimals kept in output coordinates
+if DETAIL:
+    SIMPLIFY, REACH, MIN_AREA, DIGITS = (0.006, 0.03), 0.12, 2e-5, 3
 MATCH_MIN = 0.90       # minimum offset-history similarity to call two zones the same
 
 # ISO codes for features that can hold several zones (the page only has names).
@@ -145,11 +159,26 @@ def clean(g):
     return unary_union([p for p in polys(g) if p.area >= min_area])
 
 def rnd(v):
-    return round(v + 0.0, 2)
+    return round(v + 0.0, DIGITS)
+
+def densify(coords, step):
+    """Insert points along every edge longer than `step` degrees, straight in lon/lat.
+
+    A long edge such as the 49th parallel is drawn by d3 as a great-circle arc, which bows away from the
+    parallel, and each neighbour of a shared border would bow differently.  Short edges make every renderer
+    draw the same line."""
+    out = [coords[0]]
+    for a, b in zip(coords, coords[1:]):
+        n = 1 if abs(b[0] - a[0]) > 180 else math.ceil(max(abs(b[0] - a[0]), abs(b[1] - a[1])) / step)
+        for i in range(1, n):
+            out.append((a[0] + (b[0] - a[0]) * i / n, a[1] + (b[1] - a[1]) * i / n))
+        out.append(b)
+    return out
 
 def ring_out(r, clockwise):
     pts = []
-    for x, y in r.coords:
+    coords = densify(list(r.coords), 0.25) if DETAIL else r.coords
+    for x, y in coords:
         q = [rnd(x), rnd(y)]
         if not pts or pts[-1] != q:
             pts.append(q)
@@ -159,6 +188,14 @@ def ring_out(r, clockwise):
         return None
     if (ring_area(pts) < 0) != clockwise:
         pts.reverse()
+    if any(abs(q[1]) >= 89.99 for q in pts):
+        # Antarctica: the file closes the ring along the pole, which d3 would stroke as a line from the coast
+        # to the pole.  A ring that simply runs round the pole (lon -180 to 180 along the coast) needs no such seam.
+        pts = [q for q in pts if abs(q[1]) < 89.99]
+        if pts and pts[0] != pts[-1]:
+            pts.append(pts[0])
+        if len(pts) < 4:
+            return None
     return pts
 
 def geom_out(g, cw_exterior):
@@ -195,12 +232,100 @@ def cap_radius(c, g):
             r = max(r, 2 * math.asin(min(1.0, math.sqrt(h))))
     return r
 
+def caps(plist):
+    """[lon, lat, radius] per polygon: a cap (radius in radians) that holds it, for culling in the page."""
+    out = []
+    for poly in plist:
+        ring = poly[0]
+        xs, ys = [q[0] for q in ring], [q[1] for q in ring]
+        c = ((min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2)
+        if max(xs) - min(xs) >= 359:             # a ring that runs round a pole: centre the cap on the pole
+            c = (0.0, -90.0 if sum(ys) < 0 else 90.0)
+        la0, lo0 = math.radians(c[1]), math.radians(c[0])
+        r = 0.0
+        for x, y in ring:
+            la, lo = math.radians(y), math.radians(x)
+            h = math.sin((la - la0) / 2) ** 2 + math.cos(la0) * math.cos(la) * math.sin((lo - lo0) / 2) ** 2
+            r = max(r, 2 * math.asin(min(1.0, math.sqrt(h))))
+        out.append([round(c[0], 2), round(c[1], 2), math.ceil((r + 0.0005) * 1000) / 1000])
+    return out
+
 def label_point(g):
     big = max(polys(g), key=lambda p: p.area)
     c = big.centroid
     if not big.contains(c):
         c = big.representative_point()
     return [rnd(c.x), rnd(c.y)]
+
+
+def ne_features():
+    """The Natural Earth 10m country features (downloaded once into tools/.cache)."""
+    if not os.path.exists(NE_FILE):
+        import urllib.request
+        os.makedirs(os.path.dirname(NE_FILE), exist_ok=True)
+        print('downloading', NE_URL, file=sys.stderr)
+        urllib.request.urlretrieve(NE_URL, NE_FILE)
+    return json.load(open(NE_FILE, encoding='utf-8'))['features']
+
+
+def antarctica_feature(cw_exterior):
+    """Antarctica has no time zone, so it carries no zones and the page shows 'No official local time'."""
+    f = next(f for f in ne_features() if f['properties']['NAME_EN'] == 'Antarctica')
+    g = shapely.make_valid(shape(f['geometry'])).simplify(0.15)
+    g = unary_union([p for p in polys(g) if p.area >= 0.05])
+    return {'type': 'Feature', 'properties': {'n': 'Antarctica', 'z': []},
+            'geometry': {'type': 'MultiPolygon', 'coordinates': geom_out(g, cw_exterior)}}
+
+
+def dumps_lines(head, items):
+    """JSON with one item per line, so git diffs of the generated data stay small."""
+    return head + '\n' + ',\n'.join(items) + '\n' + ('}}' if head.startswith('{"v"') else ']}')
+
+
+def load_ne(base):
+    """Natural Earth 10m outlines for the page's features, simplified for the page.
+
+    The page's own (coarse) outlines decide who owns what, so the detail layer agrees with it:
+    Natural Earth features the page does not have (Somaliland, Kosovo, Northern Cyprus, Baikonur, ...) are
+    merged into the country whose page outline contains them, and large pieces the page gives to another
+    country are moved (Crimea is Ukrainian here, Natural Earth puts it in Russia).
+    base: page feature name -> shapely geometry.
+    """
+    from shapely.strtree import STRtree
+    names = list(base)
+    tree = STRtree([base[n] for n in names])
+    pieces = defaultdict(list)
+    touched = set()
+    for f in ne_features():
+        nm = f['properties']['NAME_EN']
+        g = shapely.make_valid(shape(f['geometry'])).simplify(DET_TOL)
+        for p in polys(g):
+            if p.area < 2e-6:
+                continue
+            owner = nm if nm in base else None
+            if owner is None or (p.area >= 1.0 and not base[owner].contains(p.representative_point())):
+                rp = p.representative_point()
+                hit = [names[i] for i in tree.query(rp, predicate='within')]
+                if hit:
+                    owner = hit[0]
+                elif owner is None:
+                    near = names[tree.nearest(rp)]
+                    if base[near].distance(rp) < 1.5:
+                        owner = near
+                if owner is not None and owner != nm:
+                    touched.add(owner)
+                    print(f'  {nm} ({p.area:.3f} deg2) -> {owner}', file=sys.stderr)
+            if owner is None:
+                print(f'  dropped {nm} ({p.area:.3f} deg2): not near any page feature', file=sys.stderr)
+                continue
+            pieces[owner].append(p)
+    out = {}
+    for n, ps in pieces.items():
+        g = unary_union(ps)
+        if n in touched:        # close the hairline gaps between pieces that came from different features
+            g = g.buffer(0.003, join_style=2).buffer(-0.003, join_style=2)
+        out[n] = g
+    return out
 
 
 # ---------------------------------------------------------------- main
@@ -218,6 +343,10 @@ def main():
     g0 = first['geometry']['coordinates']
     cw_exterior = ring_area(g0[0] if first['geometry']['type'] == 'Polygon' else g0[0][0]) < 0
 
+    if not DETAIL:      # rebuilt on every run so the outline always matches this script
+        data['features'] = [f for f in data['features'] if f['properties']['n'] != 'Antarctica']
+        data['features'].append(antarctica_feature(cw_exterior))
+
     def tz_geometry(name):
         if name not in geom_cache:
             rings = tf.get_geometry(tz_name=name, coords_as_pairs=True)
@@ -226,11 +355,22 @@ def main():
         return geom_cache[name]
 
     report = []
+    ne = load_ne({f['properties']['n']: shapely.make_valid(to_shapely(f['geometry'])).buffer(0) for f in data['features']}) if DETAIL else None
+    detail = {}
     for f in data['features']:
         name = f['properties']['n']
         zones = list(dict.fromkeys(f['properties'].get('z', [])))
+        had_parts = 'parts' in f
         for k in ('parts', 'borders', 'marks'):
             f.pop(k, None)
+        if DETAIL:
+            if name not in ne:
+                print('no detailed outline for', name, file=sys.stderr)
+                continue
+            gj = geom_out(ne[name], cw_exterior)
+            detail[name] = {'g': gj, 'c': caps(gj)}
+            if not had_parts:
+                continue
         if name in EXTRA_ZONES:
             zones = list(dict.fromkeys(zones + EXTRA_ZONES[name]))
             f['properties']['z'] = zones
@@ -242,7 +382,7 @@ def main():
             continue
         cc = CC.get(name)
 
-        raw = to_shapely(f['geometry'])
+        raw = ne[name] if DETAIL else to_shapely(f['geometry'])
         min_area = min(MIN_AREA, raw.area * 0.01)
         C = clean(raw)
         tol = simplify_for(C.area)
@@ -324,7 +464,7 @@ def main():
         # is next to it: grow every zone outward in steps.  Giving a whole connected strip to one zone would
         # hand a long border to whichever zone merely touches it somewhere.
         if parts and not rest.is_empty:
-            reach = 0.1
+            reach = 0.03 if DETAIL else 0.1
             while reach <= 6.5 and not rest.is_empty:
                 claimed = None
                 for k in list(parts):
@@ -367,13 +507,17 @@ def main():
             if inside.is_empty:
                 continue
             g = geom_out(parts[k], cw_exterior)
-            if g:
+            if g and DETAIL:
+                out_parts.append({'z': [z for z in used if cls_of[z] == k], 'g': g, 'c': caps(g)})
+            elif g:
                 c = label_point(inside)
                 out_parts.append({'z': [z for z in used if cls_of[z] == k], 'g': g, 'c': c,
                                   'a': float('%.3g' % steradians(inside)),
                                   'r': math.ceil(cap_radius(c, parts[k]) * 100) / 100})
         groups = len(out_parts) + len(marks)
-        if groups > 1 or marks:
+        if DETAIL:
+            detail[name]['p'] = out_parts
+        elif groups > 1 or marks:
             f['parts'] = out_parts
             f['marks'] = list(marks.values())
         report.append((name, len(zones), len(out_parts), len(marks), dropped, weak))
@@ -382,7 +526,17 @@ def main():
     for n, nz, np_, nm, dropped, weak in report:
         print(f'{n:<38}{nz:>6}{np_:>6}{nm:>6}  {",".join(dropped)} | {len(weak)}')
 
-    new = json.dumps(data, separators=(',', ':'), ensure_ascii=False)
+    if DETAIL:
+        dump = lambda v: json.dumps(v, separators=(',', ':'), ensure_ascii=False)
+        new = dumps_lines('{"v":1,"f":{', [dump(n) + ':' + dump(e) for n, e in detail.items()])
+        print(f'DETAIL: {len(detail)} features, {len(new)} chars', file=sys.stderr)
+        if not CHECK:
+            open(DETAIL_OUT, 'w', encoding='utf-8').write(new)
+            print('wrote', os.path.normpath(DETAIL_OUT), file=sys.stderr)
+        return
+    dump = lambda v: json.dumps(v, separators=(',', ':'), ensure_ascii=False)
+    assert set(data) == {'type', 'features'}, 'unexpected keys in DATA'
+    new = dumps_lines('{"type":"FeatureCollection","features":[', [dump(f) for f in data['features']])
     print(f'DATA: {len(m.group(1))} -> {len(new)} chars', file=sys.stderr)
     if not CHECK:
         open(HTML, 'w', encoding='utf-8').write(src[:m.start(1)] + new + src[m.end(1):])
