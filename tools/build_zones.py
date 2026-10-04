@@ -58,7 +58,19 @@ CC = {
     'Democratic Republic of the Congo': 'CD', 'Ukraine': 'UA', 'Uzbekistan': 'UZ',
     'Mongolia': 'MN', 'Germany': 'DE', 'Vietnam': 'VN', 'Ecuador': 'EC',
     'Papua New Guinea': 'PG', 'New Zealand': 'NZ', 'French Southern and Antarctic Lands': 'TF',
-    'Marshall Islands': 'MH', 'United States Minor Outlying Islands': 'UM',
+    'Marshall Islands': 'MH', 'United States Minor Outlying Islands': 'UM', 'France': 'FR',
+}
+# The page lists only Europe/Paris for France, but its overseas departments are in other zones.
+# Zones added to a country's list, and the extra country codes whose zone.tab places belong to it.
+EXTRA_ZONES = {
+    'France': ['America/Cayenne', 'America/Martinique', 'America/Guadeloupe', 'Indian/Reunion', 'Indian/Mayotte'],
+}
+EXTRA_CC = {'France': ['GP', 'MQ', 'RE', 'YT', 'GF']}
+# Zones removed from a country's list: their land is listed under (and takes the time of) the country's
+# main zone instead.  Crimea (Europe/Simferopol) is Ukrainian and follows Europe/Kyiv.
+DROP_ZONES = {
+    'Ukraine': {'Europe/Simferopol'},
+    'Russia': {'Europe/Simferopol'},
 }
 # Small dependencies that inherited their parent country's whole zone list in the page.
 # They get the zone(s) that really cover them, and no markers.
@@ -219,6 +231,12 @@ def main():
         zones = list(dict.fromkeys(f['properties'].get('z', [])))
         for k in ('parts', 'borders', 'marks'):
             f.pop(k, None)
+        if name in EXTRA_ZONES:
+            zones = list(dict.fromkeys(zones + EXTRA_ZONES[name]))
+            f['properties']['z'] = zones
+        if name in DROP_ZONES:
+            zones = [z for z in zones if z not in DROP_ZONES[name]]
+            f['properties']['z'] = zones
         island = name in ISLANDS
         if not island and (len(zones) < 2 or name not in CC):
             continue
@@ -269,7 +287,7 @@ def main():
         # 3. zone.tab places inside this country for zones that got no land
         marks = {}
         if cc and not island:
-            for t, ll, comment in ztab.get(cc, []):
+            for t, ll, comment in [r for c in [cc] + EXTRA_CC.get(name, []) for r in ztab.get(c, [])]:
                 z, s = best_match(t, zones)
                 if s >= MATCH_MIN and z not in by_z and z not in marks:
                     marks[z] = {'z': z, 'll': [rnd(ll[0]), rnd(ll[1])], 'n': comment or t.split('/')[-1].replace('_', ' ')}
@@ -302,6 +320,27 @@ def main():
             z = min(zones, key=lambda z: abs(sig(z, FWD)[0] / 3600 - lon / 15))
             anchors[cls_of[z]] = Point(0, 0)
         rest = E if taken is None else clean(E.difference(taken))
+        # Unclaimed land (zone shapes rarely line up exactly with the country outline) goes to the zone that
+        # is next to it: grow every zone outward in steps.  Giving a whole connected strip to one zone would
+        # hand a long border to whichever zone merely touches it somewhere.
+        if parts and not rest.is_empty:
+            reach = 0.1
+            while reach <= 6.5 and not rest.is_empty:
+                claimed = None
+                for k in list(parts):
+                    got = clean(rest.intersection(parts[k].buffer(reach)))
+                    if claimed is not None and not got.is_empty:
+                        got = clean(got.difference(claimed))
+                    if got.is_empty:
+                        continue
+                    parts[k] = clean(unary_union([parts[k], got]))
+                    claimed = got if claimed is None else unary_union([claimed, got])
+                if claimed is not None:
+                    rest = clean(rest.difference(claimed))
+                reach *= 2
+            for k in parts:                   # buffering leaves many small arcs; thin them out again
+                parts[k] = clean(parts[k].simplify(tol * 0.5))
+            anchors = dict(parts) | {k: v for k, v in anchors.items() if k not in parts}
         extra = defaultdict(list)
         for piece in polys(rest):
             if anchors:
@@ -309,9 +348,10 @@ def main():
         for k, ps in extra.items():
             parts[k] = clean(unary_union(([parts[k]] if k in parts else []) + ps))
 
-        for k in parts:                           # a zone with land needs no marker
+        for k in parts:                           # a marker is only needed where the zone has no land nearby
             for z in cls[k]:
-                marks.pop(z, None)
+                if z in marks and Point(marks[z]['ll']).distance(parts[k].intersection(C)) < 0.3:
+                    marks.pop(z)
         marks = {z: mk for z, mk in marks.items() if not any(cls_of[z] == cls_of[o] for o in marks if o != z and o < z)}
 
         used = [z for z in zones if cls_of[z] in parts or z in marks]
