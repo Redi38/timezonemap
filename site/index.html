@@ -362,26 +362,32 @@ function applyDetail(d){for(const f of F){const e=d.f[f.properties.n];if(!e)cont
 function loadDetail(){detTried=true;fetch('detail.json').then(r=>{if(!r.ok)throw 0;return r.json()}).then(d=>{applyDetail(d);refresh()}).catch(()=>{})}
 // A polygon wholly on the near side is projected vertex by vertex, which is several times faster than d3's path pipeline
 // (resampling and clipping); only polygons crossing the horizon go through d3. Vertices under half a pixel apart are skipped.
+let tgt=ctx,vtol=.6,vmin=.4,moving=false,lastMove=0;   // tgt: where polygons are drawn (the canvas, or a Path2D); vtol: vertices closer than this many px are skipped
 function itemPath(it){
+ if(it.r*k<vmin)return;   // too small to see (while moving the globe, anything under a couple of pixels)
  if(d3.geoDistance(ctr,it.c)+it.r<1.55){   // same maths as proj() for the orthographic projection, without its per-call overhead
-  const R=Math.PI/180,L=rot[0]*R,P=rot[1]*R,cP=Math.cos(P),sP=Math.sin(P),cx=W/2,cy=H/2;
-  for(const ring of it.poly){let px=0,py=0,n=0;
-   for(let i=0;i<ring.length;i++){const v=ring[i],la=v[1]*R,lo=v[0]*R+L,cl=Math.cos(la),x=cx+k*cl*Math.sin(lo),y=cy-k*(Math.sin(la)*cP+cl*Math.cos(lo)*sP);
-    if(!n){ctx.moveTo(x,y);px=x;py=y;n=1}else if(Math.abs(x-px)+Math.abs(y-py)>.5){ctx.lineTo(x,y);px=x;py=y}}
-   ctx.closePath()}}
- else path({type:'Polygon',coordinates:it.poly})}
+  const R=Math.PI/180,L=rot[0]*R,P=rot[1]*R,cP=Math.cos(P),sP=Math.sin(P),sL=Math.sin(L),cL=Math.cos(L),cx=W/2,cy=H/2;
+  // per vertex cos/sin of latitude and of longitude are computed once (a[j..j+3]); the rotation then needs no trig at all
+  const T=it.T||(it.T=it.poly.map(ring=>{const a=new Float32Array(ring.length*4);ring.forEach((v,i)=>{const la=v[1]*R,lo=v[0]*R;a[i*4]=Math.cos(la);a[i*4+1]=Math.sin(la);a[i*4+2]=Math.sin(lo);a[i*4+3]=Math.cos(lo)});return a}));
+  for(const a of T){let px=0,py=0,n=0;
+   for(let j=0;j<a.length;j+=4){const cla=a[j],x=cx+k*cla*(a[j+2]*cL+a[j+3]*sL),y=cy-k*(a[j+1]*cP+cla*(a[j+3]*cL-a[j+2]*sL)*sP);
+    if(!n){tgt.moveTo(x,y);px=x;py=y;n=1}else if(Math.abs(x-px)+Math.abs(y-py)>vtol){tgt.lineTo(x,y);px=x;py=y}}
+   tgt.closePath()}}
+ else if(tgt===ctx)path({type:'Polygon',coordinates:it.poly});
+ else{path.context(tgt);path({type:'Polygon',coordinates:it.poly});path.context(ctx)}}
 // path of a country: the detailed outline (visible polygons only) once zoomed in, else the coarse one
 function pathF(f){if(detOn&&f.dg){for(const it of f.dg)if(vis(it.c,it.r))itemPath(it)}else path(f)}
 const hasIn=(it,ll)=>d3.geoDistance(ll,it.c)<=it.r+.002&&d3.geoContains({type:'Polygon',coordinates:it.poly},ll);
 function inF(f,ll){if(d3.geoDistance(ll,f.bc)>f.br+.01)return false;return detOn&&f.dg?f.dg.some(it=>hasIn(it,ll)):d3.geoContains(f,ll)}
 // Zone regions reach a little past the country, so they are clipped to its outline. Each group is stroked and then filled over
 // its own inner half: that leaves a separator only where two different groups meet and hides seams between zones that behave the same.
-function drawZones(f){ctx.save();ctx.beginPath();pathF(f);ctx.clip();
+function drawZones(f){ctx.save();let P=null;   // zoomed in the outline is built once as a Path2D and reused for the clip and the final stroke
+ if(detOn&&f.dg){P=new Path2D();tgt=P;pathF(f);tgt=ctx;ctx.clip(P)}else{ctx.beginPath();pathF(f);ctx.clip()}
  for(const g of f.gs){let n=0;ctx.beginPath();
   if(detOn&&g.dp.length){for(const dp of g.dp)for(const it of dp.items)if(vis(it.c,it.r)){itemPath(it);n++}}
   else for(const p of g.parts)if(vis(p.c,p.r)){path(p.geo);n++}
   if(!n)continue;ctx.lineWidth=1.3;ctx.strokeStyle='rgba(6,12,24,.6)';ctx.stroke();ctx.fillStyle=gcol(g,f===hov&&g.k===hgk);ctx.fill()}
- ctx.restore();ctx.beginPath();pathF(f);ctx.stroke()}
+ ctx.restore();if(P)ctx.stroke(P);else{ctx.beginPath();pathF(f);ctx.stroke()}}
 // Zones too small for the country outline (islands, enclaves) get a dot at their real position.
 function drawMarks(){for(const f of F){if(!f.gs||f.gs.length<2)continue;
  for(const g of f.gs){
@@ -396,7 +402,8 @@ function label(c,a,t,n){const px=a*k*k;if(px<480||d3.geoDistance(ctr,c)>1.25)ret
  return p}
 function draw(){ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,W,H);proj.translate([W/2,H/2]).scale(k).rotate(rot);ctr=[-rot[0],-rot[1]];
  {const hd=Math.hypot(W,H)/2;vr=hd>=k?1.62:Math.min(1.62,Math.asin(hd/k)+.03)}   // angle from the centre to the screen corner
- if(!detTried&&k>k0*DZ_LOAD)loadDetail();detOn=!!det&&k>k0*DZ_USE;
+ if(!detTried&&k>k0*DZ_LOAD)loadDetail();moving=!!drag||!!fly||auto||performance.now()-lastMove<160;detOn=!!det&&k>k0*DZ_USE&&!moving;   // while the globe is moving the coarse outlines are used: that is several times cheaper
+
 
  ctx.beginPath();path({type:'Sphere'});const g=ctx.createRadialGradient(W/2-k*.35,H/2-k*.35,k*.1,W/2,H/2,k);g.addColorStop(0,'#1d4272');g.addColorStop(1,'#08152b');ctx.fillStyle=g;ctx.fill();
  ctx.beginPath();path(d3.geoGraticule10());ctx.strokeStyle='rgba(255,255,255,.07)';ctx.lineWidth=.6;ctx.stroke();
@@ -433,11 +440,11 @@ function pick(x,y){hov=null;hgk=null;
  for(const g of f.gs){if(detOn&&g.dp.length?g.dp.some(dp=>dp.items.some(it=>hasIn(it,ll))):g.parts.some(p=>d3.geoContains(p.geo,ll))){hgk=g.k;return}}}
 cv.addEventListener('pointerdown',e=>{cv.setPointerCapture(e.pointerId);const r=cv.getBoundingClientRect();mouse=[e.clientX-r.left,e.clientY-r.top];drag={x:e.clientX,y:e.clientY,m:0}});
 cv.addEventListener('pointermove',e=>{const r=cv.getBoundingClientRect();mouse=[e.clientX-r.left,e.clientY-r.top];
- if(drag){const dx=e.clientX-drag.x,dy=e.clientY-drag.y;drag.x=e.clientX;drag.y=e.clientY;drag.m+=Math.abs(dx)+Math.abs(dy);rot[0]+=dx*57.3/k;rot[1]=Math.max(-90,Math.min(90,rot[1]-dy*57.3/k))}
+ if(drag){const dx=e.clientX-drag.x,dy=e.clientY-drag.y;drag.x=e.clientX;drag.y=e.clientY;drag.m+=Math.abs(dx)+Math.abs(dy);lastMove=performance.now();rot[0]+=dx*57.3/k;rot[1]=Math.max(-90,Math.min(90,rot[1]-dy*57.3/k))}
  else pick(mouse[0],mouse[1])});
 cv.addEventListener('pointerup',()=>{if(drag&&drag.m<6)pick(mouse[0],mouse[1]);drag=null});
 cv.addEventListener('pointerleave',e=>{if(e.pointerType==='mouse'){mouse=null;hov=null;hgk=null}});
-const zoom=m=>{k=Math.max(k0*.6,Math.min(k0*12,k*m))};
+const zoom=m=>{lastMove=performance.now();k=Math.max(k0*.6,Math.min(k0*12,k*m))};
 cv.addEventListener('wheel',e=>{e.preventDefault();zoom(Math.exp(-e.deltaY*.0015))},{passive:false});
 document.getElementById('bzi').onclick=()=>zoom(1.4);document.getElementById('bzo').onclick=()=>zoom(1/1.4);
 document.getElementById('brot').onclick=e=>{auto=!auto;e.target.textContent=auto?'Pause rotation':'Resume rotation'};
