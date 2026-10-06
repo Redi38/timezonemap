@@ -1,5 +1,6 @@
 // Search: finds a city (cities.json, fetched on first use) or a country, flies the globe to it and marks it. Owns `sel`.
-import {F,offOf,fo,h12} from './zones.js';
+import {F} from './zones.js';
+import {offOf,fo,clock,zoneName} from './tz.js';
 import {ctx,proj,ctr,k,k0,vis,pathF,inF} from './view.js';
 import {setAuto,flyTo,cancelFly} from './anim.js';
 const qEl=document.getElementById('q'),resEl=document.getElementById('res'),foundEl=document.getElementById('found');
@@ -31,10 +32,10 @@ function choose(it){if(!it)return;close();qEl.value=it.n;qEl.blur();
  foundEl.style.display='block';card()}
 function card(){if(!sel)return;const it=sel,t=Date.now();let h;
  const co=(l)=>`${Math.abs(l[1]).toFixed(2)}°${l[1]<0?'S':'N'}, ${Math.abs(l[0]).toFixed(2)}°${l[0]<0?'W':'E'}`;
- if(it.kind==='city'){const d=new Date(t),o=offOf(it.tz,d),tm=new Intl.DateTimeFormat('en-GB',{timeZone:it.tz,hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:h12}).format(d);
-  h=`<b>${esc(it.n)}</b>, ${esc(it.cn)}<div class="m">${co(it.ll)}${it.f&&it.f.properties.n!==it.cn?' · in '+esc(it.f.properties.n):''}</div><div class="t">${tm} <span class="m">${fo(o)}</span></div><div class="m">${esc(it.tz.replace(/_/g,' '))}</div>`}
+ if(it.kind==='city'){const d=new Date(t),o=offOf(it.tz,d),tm=clock(it.tz,d,true);
+  h=`<b>${esc(it.n)}</b>, ${esc(it.cn)}<div class="m">${co(it.ll)}${it.f&&it.f.properties.n!==it.cn?' · in '+esc(it.f.properties.n):''}</div><div class="t">${tm} <span class="m">${fo(o)}</span></div><div class="m">${esc(zoneName(it.tz))}</div>`}
  else{const f=it.f,gs=f.gs&&f.gs.length>1?f.gs:null;
-  h=`<b>${esc(f.properties.n)}</b><div class="m">centre ${co(f.c)}</div>`+(gs?`<div class="m">${gs.length} time zones: ${gs.map(g=>fo(g.off)).join(', ')}</div>`:f.tz?`<div class="t">${f.t} <span class="m">${fo(f.off)}</span></div><div class="m">${esc(f.tz.replace(/_/g,' '))}</div>`:'<div class="m">No official local time</div>')}
+  h=`<b>${esc(f.properties.n)}</b><div class="m">centre ${co(f.c)}</div>`+(gs?`<div class="m">${gs.length} time zones: ${gs.map(g=>fo(g.off)).join(', ')}</div>`:f.tz?`<div class="t">${f.t} <span class="m">${fo(f.off)}</span></div><div class="m">${esc(zoneName(f.tz))}</div>`:'<div class="m">No official local time</div>')}
  const html=h+'<button aria-label="Clear" title="Clear">×</button>';if(foundEl.dataset.h!==html){foundEl.dataset.h=html;foundEl.innerHTML=html;foundEl.querySelector('button').onclick=clearSel}}
 function clearSel(){sel=null;cancelFly();foundEl.style.display='none';foundEl.dataset.h='';qEl.value=''}
 // outline of the country the result is in, and a pulsing pin at the exact spot (a view overlay, drawn after the map)

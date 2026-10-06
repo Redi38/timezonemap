@@ -1,10 +1,11 @@
 // Entry point: wires the modules together and starts the frame loop.
-//   zones.js    zone data, offsets, DST, colours            (no local imports)
-//   view.js     projection, camera, drawing, hit-testing    (zones)
-//   tooltip.js  hover tooltip                               (zones, view)
+//   tz.js       zone names, offsets, DST, clock strings     (no imports)
+//   zones.js    zone data per country, grouping, colours    (tz)
+//   view.js     projection, camera, drawing, hit-testing    (zones, tz)
+//   tooltip.js  hover tooltip                               (zones, tz, view)
 //   anim.js     frame loop, auto-rotation, fly-to           (view)
-//   search.js   city/country search and its map marker      (zones, view, anim)
-//   input.js    pointer, wheel and button handlers          (zones, view, anim)
+//   search.js   city/country search and its map marker      (zones, tz, view, anim)
+//   input.js    pointer, wheel and button handlers          (zones, tz, view, anim)
 import {refresh,stamp} from './zones.js';
 import {size,addOverlay} from './view.js';
 import {tipUpdate} from './tooltip.js';

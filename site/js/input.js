@@ -1,7 +1,8 @@
 // Pointer, wheel and button input. Owns the drag state and the pointer position; turns them into calls on the view and the animation.
 import {cv,pick,clearHover,pan,zoom} from './view.js';
 import {cancelFly,toggleAuto} from './anim.js';
-import {h12,setH12,stamp} from './zones.js';
+import {stamp} from './zones.js';
+import {h12,setH12} from './tz.js';
 let drag=null,mouse=null;
 export const isDragging=()=>!!drag;
 export const getMouse=()=>mouse;   // [x,y] in canvas pixels, or null when the pointer is off the globe

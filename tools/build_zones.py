@@ -31,21 +31,21 @@ Requires: pip install timezonefinder shapely tzdata
 Geometry is timezone-boundary-builder (via timezonefinder).  Its zone names come from
 zone.tab while the page uses zone1970.tab names, so zones are matched by comparing
 their UTC-offset history from 1970 to 2037.
+The matching, zone.tab reading and zone naming are in tools/tz.py.
 """
-import datetime as dt
 import json
 import math
 import os
 import re
 import sys
-import zoneinfo
 from collections import defaultdict
 
 import shapely
-import tzdata
 from shapely.geometry import MultiPolygon, Point, Polygon, box, shape
 from shapely.ops import unary_union
 from timezonefinder import TimezoneFinder
+
+from tz import MATCH_MIN, behaviour, best_match, fixed_zone, is_conventional, offset_hours, read_zone_tab, zone_city
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 COUNTRIES = os.path.join(HERE, '..', 'site', 'countries.js')   # 'const DATA={...};' read by the page
@@ -62,7 +62,6 @@ MIN_AREA = 1e-4        # deg^2; smaller pieces are dropped (scaled down for tiny
 DIGITS = 2             # decimals kept in output coordinates
 if DETAIL:
     SIMPLIFY, REACH, MIN_AREA, DIGITS = (0.006, 0.03), 0.12, 2e-5, 3
-MATCH_MIN = 0.90       # minimum offset-history similarity to call two zones the same
 
 # Per-country settings (ISO codes, zones to add or drop, island dependencies) live in zone_settings.json,
 # keyed by the feature name used in site/countries.js.  See the "_about" notes in that file.
@@ -73,51 +72,6 @@ def load_settings(path=SETTINGS_FILE):
         return json.load(fh)['countries']
 
 SETTINGS = load_settings()
-
-
-zoneinfo.reset_tzpath(to=[])          # use the tzdata package, not the OS copy
-TZDIR = os.path.join(os.path.dirname(tzdata.__file__), 'zoneinfo')
-UTC = dt.timezone.utc
-
-
-# ---------------------------------------------------------------- tz name matching
-HIST = [dt.datetime(y, m, 15, tzinfo=UTC) for y in range(1970, 2038) for m in range(1, 13)]
-FWD = [dt.datetime(y, m, d, tzinfo=UTC) for y in range(2026, 2038) for m in range(1, 13) for d in (1, 15)]
-_sig = {}
-
-def sig(name, samples=HIST):
-    key = (name, id(samples))
-    if key not in _sig:
-        z = zoneinfo.ZoneInfo(name)
-        _sig[key] = tuple(int(d.astimezone(z).utcoffset().total_seconds()) for d in samples)
-    return _sig[key]
-
-def similarity(a, b):
-    sa, sb = sig(a), sig(b)
-    return sum(x == y for x, y in zip(sa, sb)) / len(sa)
-
-def best_match(name, candidates):
-    best, bs = None, -1
-    for c in candidates:
-        s = similarity(name, c) + (1e-6 if c == name else 0)
-        if s > bs:
-            best, bs = c, s
-    return best, bs
-
-def parse_coord(s):
-    m = re.match(r'([+-])(\d{2})(\d{2})(\d{2})?([+-])(\d{3})(\d{2})(\d{2})?$', s)
-    la = int(m[2]) + int(m[3]) / 60 + int(m[4] or 0) / 3600
-    lo = int(m[6]) + int(m[7]) / 60 + int(m[8] or 0) / 3600
-    return (-lo if m[5] == '-' else lo, -la if m[1] == '-' else la)
-
-def read_zone_tab():
-    out = defaultdict(list)       # cc -> [(name, (lon, lat), comment)]
-    for line in open(os.path.join(TZDIR, 'zone.tab'), encoding='utf-8'):
-        if line.startswith('#') or not line.strip():
-            continue
-        p = line.rstrip('\n').split('\t')
-        out[p[0]].append((p[2], parse_coord(p[1]), p[3] if len(p) > 3 else ''))
-    return out
 
 
 # ---------------------------------------------------------------- geometry helpers
@@ -255,10 +209,10 @@ def ne_features():
 
 # Antarctica has no official time.  The map shows the conventional zones by longitude (a wedge each, meeting at the
 # pole); research stations often keep their own time instead, which the page says in the tooltip.
-ANT_WEDGES = [      # (west lon, east lon, zone)
-    (-180, -150, 'Antarctica/McMurdo'), (-150, -90, 'Etc/GMT+6'), (-90, -67, 'Etc/GMT+4'),
-    (-67, -20, 'Etc/GMT+3'), (-20, 40, 'Etc/UTC'), (40, 60, 'Etc/GMT-3'), (60, 80, 'Etc/GMT-5'),
-    (80, 100, 'Etc/GMT-6'), (100, 115, 'Etc/GMT-7'), (115, 135, 'Etc/GMT-8'), (135, 165, 'Etc/GMT-10'),
+ANT_WEDGES = [      # (west lon, east lon, zone); fixed_zone(h) is the whole-hour zone for UTC+h
+    (-180, -150, 'Antarctica/McMurdo'), (-150, -90, fixed_zone(-6)), (-90, -67, fixed_zone(-4)),
+    (-67, -20, fixed_zone(-3)), (-20, 40, fixed_zone(0)), (40, 60, fixed_zone(3)), (60, 80, fixed_zone(5)),
+    (80, 100, fixed_zone(6)), (100, 115, fixed_zone(7)), (115, 135, fixed_zone(8)), (135, 165, fixed_zone(10)),
     (165, 180, 'Antarctica/McMurdo'),
 ]
 
@@ -411,7 +365,7 @@ def probe_points(p):
 def find_zones(C, tf):
     """Step 1: which geometry zones sit inside this country?"""
     found = {tf.timezone_at(lng=x, lat=y) for p in polys(C) for x, y in probe_points(p)}
-    return {t for t in found if t and not t.startswith('Etc/')}
+    return {t for t in found if t and not is_conventional(t)}
 
 
 def clip_zones(found, zones, E, tol, ctx):
@@ -440,7 +394,7 @@ def find_marks(cfg, zones, by_z, ctx):
         for t, ll, comment in ctx.ztab.get(cc, []):
             z, s = best_match(t, zones)
             if s >= MATCH_MIN and z not in by_z and z not in marks:
-                marks[z] = {'z': z, 'll': [rnd(ll[0]), rnd(ll[1])], 'n': comment or t.split('/')[-1].replace('_', ' ')}
+                marks[z] = {'z': z, 'll': [rnd(ll[0]), rnd(ll[1])], 'n': comment or zone_city(t)}
     return marks
 
 
@@ -451,7 +405,7 @@ def merge_zones(zones, by_z):
     parts maps a class key to its region (biggest first wins overlaps), taken is the union of all regions."""
     cls = {}
     for z in zones:
-        cls.setdefault(sig(z, FWD), []).append(z)
+        cls.setdefault(behaviour(z), []).append(z)
     cls_of = {z: k for k, zs in cls.items() for z in zs}
     geo = defaultdict(list)
     for z, ps in by_z.items():
@@ -501,7 +455,7 @@ def claim_rest(zones, C, E, tol, marks, cls_of, parts, taken):
         anchors.setdefault(cls_of[z], Point(mk['ll']))
     if not anchors and zones:
         lon = C.representative_point().x
-        z = min(zones, key=lambda z: abs(sig(z, FWD)[0] / 3600 - lon / 15))
+        z = min(zones, key=lambda z: abs(offset_hours(z) - lon / 15))
         anchors[cls_of[z]] = Point(0, 0)
     rest = E if taken is None else clean(E.difference(taken))
     if parts and not rest.is_empty:

@@ -1,6 +1,7 @@
 // Projection and drawing: the orthographic globe, camera (rotation and zoom), detailed outlines, hit-testing and the frame renderer.
 // Owns the camera and the highlighted country; other modules read them through the exports and change them through the functions.
-import {F,col,gcol,fo,refresh} from './zones.js';
+import {F,col,gcol,refresh} from './zones.js';
+import {fo} from './tz.js';
 export const cv=document.getElementById('g'),ctx=cv.getContext('2d'),wrap=document.getElementById('wrap');
 export const proj=d3.geoOrthographic().precision(.5),path=d3.geoPath(proj,ctx);
 export let W,H,k0=0,k=1,ctr=[0,0],hov=null,hgk=null;   // live bindings: read-only for importers
