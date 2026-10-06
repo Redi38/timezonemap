@@ -25,6 +25,8 @@ country outlines (downloaded once into tools/.cache) and the same zone regions r
 fine tolerance and clipped to those outlines.  detail.json maps feature name ->
 {g: polygons, c: cap per polygon, p: [{z, g, c}]} (p only for countries that have zone regions).
 
+Per-country settings (ISO codes, zones to add or drop, island dependencies) are in tools/zone_settings.json.
+
 Requires: pip install timezonefinder shapely tzdata
 Geometry is timezone-boundary-builder (via timezonefinder).  Its zone names come from
 zone.tab while the page uses zone1970.tab names, so zones are matched by comparing
@@ -62,33 +64,16 @@ if DETAIL:
     SIMPLIFY, REACH, MIN_AREA, DIGITS = (0.006, 0.03), 0.12, 2e-5, 3
 MATCH_MIN = 0.90       # minimum offset-history similarity to call two zones the same
 
-# ISO codes for features that can hold several zones (the page only has names).
-CC = {
-    'United States of America': 'US', 'Russia': 'RU', 'Canada': 'CA', 'Brazil': 'BR',
-    'Australia': 'AU', 'Argentina': 'AR', 'Mexico': 'MX', 'Kazakhstan': 'KZ',
-    'Indonesia': 'ID', 'Chile': 'CL', 'Greenland': 'GL', 'Spain': 'ES', 'Portugal': 'PT',
-    'French Polynesia': 'PF', 'Kiribati': 'KI', 'Federated States of Micronesia': 'FM',
-    'Malaysia': 'MY', 'Cyprus': 'CY', "People's Republic of China": 'CN', 'Palestine': 'PS',
-    'Democratic Republic of the Congo': 'CD', 'Ukraine': 'UA', 'Uzbekistan': 'UZ',
-    'Mongolia': 'MN', 'Germany': 'DE', 'Vietnam': 'VN', 'Ecuador': 'EC',
-    'Papua New Guinea': 'PG', 'New Zealand': 'NZ', 'French Southern and Antarctic Lands': 'TF',
-    'Marshall Islands': 'MH', 'United States Minor Outlying Islands': 'UM', 'France': 'FR',
-}
-# The page lists only Europe/Paris for France, but its overseas departments are in other zones.
-# Zones added to a country's list, and the extra country codes whose zone.tab places belong to it.
-EXTRA_ZONES = {
-    'France': ['America/Cayenne', 'America/Martinique', 'America/Guadeloupe', 'Indian/Reunion', 'Indian/Mayotte'],
-}
-EXTRA_CC = {'France': ['GP', 'MQ', 'RE', 'YT', 'GF']}
-# Zones removed from a country's list: their land is listed under (and takes the time of) the country's
-# main zone instead.  Crimea (Europe/Simferopol) is Ukrainian and follows Europe/Kyiv.
-DROP_ZONES = {
-    'Ukraine': {'Europe/Simferopol'},
-    'Russia': {'Europe/Simferopol'},
-}
-# Small dependencies that inherited their parent country's whole zone list in the page.
-# They get the zone(s) that really cover them, and no markers.
-ISLANDS = {'Brazilian Island', 'Australian Indian Ocean Territories', 'Ashmore and Cartier Islands'}
+# Per-country settings (ISO codes, zones to add or drop, island dependencies) live in zone_settings.json,
+# keyed by the feature name used in site/countries.js.  See the "_about" notes in that file.
+SETTINGS_FILE = os.path.join(HERE, 'zone_settings.json')
+
+def load_settings(path=SETTINGS_FILE):
+    with open(path, encoding='utf-8') as fh:
+        return json.load(fh)['countries']
+
+SETTINGS = load_settings()
+
 
 zoneinfo.reset_tzpath(to=[])          # use the tzdata package, not the OS copy
 TZDIR = os.path.join(os.path.dirname(tzdata.__file__), 'zoneinfo')
@@ -362,226 +347,330 @@ def load_ne(base):
     return out
 
 
-# ---------------------------------------------------------------- main
-def main():
+# ---------------------------------------------------------------- per-country steps
+# build_country() runs these in order for one feature:
+#   find_zones -> clip_zones -> find_marks -> merge_zones -> claim_rest -> drop_nearby_marks -> output_parts
+
+class Context:
+    """Things every country needs: the zone finder, zone.tab, the world box and the winding the page uses."""
+
+    def __init__(self, cw_exterior):
+        self.tf = TimezoneFinder()
+        self.ztab = read_zone_tab()
+        self.world = box(-180, -90, 180, 90)
+        self.cw_exterior = cw_exterior
+        self._geom_cache = {}
+
+    def tz_geometry(self, name):
+        if name not in self._geom_cache:
+            rings = self.tf.get_geometry(tz_name=name, coords_as_pairs=True)
+            ps = [shapely.make_valid(Polygon(p[0], p[1:])) for p in rings]
+            self._geom_cache[name] = shapely.make_valid(unary_union(ps)).simplify(SIMPLIFY[0])
+        return self._geom_cache[name]
+
+
+class CountryResult:
+    def __init__(self, used, dropped, weak, parts, marks, empty):
+        self.used = used            # page zone names that really exist in the country
+        self.dropped = dropped      # listed zones that got neither land nor a marker
+        self.weak = weak            # geometry zones skipped as a neighbour's
+        self.parts = parts          # output regions: [{z, g, ...}]
+        self.marks = marks          # {zone: {z, ll, n}}
+        self.empty = empty          # nothing at all was found
+
+
+def apply_zone_overrides(f, name, zones):
+    """Add the country's extra zones and remove its dropped ones; keeps properties.z in step."""
+    cfg = SETTINGS.get(name, {})
+    if 'extra_zones' in cfg:
+        zones = list(dict.fromkeys(zones + cfg['extra_zones']))
+        f['properties']['z'] = zones
+    if 'drop_zones' in cfg:
+        zones = [z for z in zones if z not in cfg['drop_zones']]
+        f['properties']['z'] = zones
+    return zones
+
+
+def probe_points(p):
+    """Representative point of polygon p plus a grid of points inside it, as (lon, lat)."""
+    rp = p.representative_point()
+    pts = [(rp.x, rp.y)]
+    minx, miny, maxx, maxy = p.bounds
+    step = max(0.1, min(1.0, ((maxx - minx) * (maxy - miny)) ** 0.5 / 70))
+    xs, ys, y = [], [], miny
+    while y <= maxy:
+        x = minx
+        while x <= maxx:
+            xs.append(x); ys.append(y); x += step
+        y += step
+    if xs:
+        pts += [(x, y) for x, y, ok in zip(xs, ys, shapely.contains_xy(p, xs, ys)) if ok]
+    return pts
+
+
+def find_zones(C, tf):
+    """Step 1: which geometry zones sit inside this country?"""
+    found = {tf.timezone_at(lng=x, lat=y) for p in polys(C) for x, y in probe_points(p)}
+    return {t for t in found if t and not t.startswith('Etc/')}
+
+
+def clip_zones(found, zones, E, tol, ctx):
+    """Step 2: clip each geometry zone to the reach area and name it after the page's zone.
+
+    Returns ({page zone: [pieces]}, [geometry zones skipped because they belong to a neighbour])."""
+    by_z, weak = defaultdict(list), []
+    if not zones:
+        return by_z, weak
+    for t in sorted(found):
+        piece = clean(ctx.tz_geometry(t).intersection(E).simplify(tol))
+        if piece.is_empty or piece.area < min_area:
+            continue
+        z, s = best_match(t, zones)
+        if s < MATCH_MIN:
+            weak.append(t)          # a neighbour's zone overlapping the coarse outline
+            continue
+        by_z[z].append(piece)
+    return by_z, weak
+
+
+def find_marks(cfg, zones, by_z, ctx):
+    """Step 3: zone.tab places inside this country for zones that got no land."""
+    marks = {}
+    for cc in [cfg['cc']] + cfg.get('extra_cc', []):
+        for t, ll, comment in ctx.ztab.get(cc, []):
+            z, s = best_match(t, zones)
+            if s >= MATCH_MIN and z not in by_z and z not in marks:
+                marks[z] = {'z': z, 'll': [rnd(ll[0]), rnd(ll[1])], 'n': comment or t.split('/')[-1].replace('_', ' ')}
+    return marks
+
+
+def merge_zones(zones, by_z):
+    """Step 4: merge zones that behave identically from now on, and make the regions disjoint.
+
+    Returns (cls, cls_of, parts, taken): cls maps a class key to its zones, cls_of maps a zone to its key,
+    parts maps a class key to its region (biggest first wins overlaps), taken is the union of all regions."""
+    cls = {}
+    for z in zones:
+        cls.setdefault(sig(z, FWD), []).append(z)
+    cls_of = {z: k for k, zs in cls.items() for z in zs}
+    geo = defaultdict(list)
+    for z, ps in by_z.items():
+        geo[cls_of[z]] += ps
+    order = sorted(geo, key=lambda k: -sum(p.area for p in geo[k]))
+    parts, taken = {}, None
+    for k in order:
+        g = clean(unary_union(geo[k]))
+        if taken is not None:
+            g = clean(g.difference(taken))
+        if g.is_empty:
+            continue
+        parts[k] = g
+        taken = g if taken is None else unary_union([taken, g])
+    return cls, cls_of, parts, taken
+
+
+def grow_parts(parts, rest, tol):
+    """Hand unclaimed land to the zone that is next to it, growing every zone outward in steps.
+
+    Giving a whole connected strip to one zone would hand a long border to whichever zone merely touches it
+    somewhere.  Zone shapes rarely line up exactly with the country outline, hence the leftovers.
+    Changes `parts` in place and returns what is still unclaimed."""
+    reach = 0.03 if DETAIL else 0.1
+    while reach <= 6.5 and not rest.is_empty:
+        claimed = None
+        for k in list(parts):
+            got = clean(rest.intersection(parts[k].buffer(reach)))
+            if claimed is not None and not got.is_empty:
+                got = clean(got.difference(claimed))
+            if got.is_empty:
+                continue
+            parts[k] = clean(unary_union([parts[k], got]))
+            claimed = got if claimed is None else unary_union([claimed, got])
+        if claimed is not None:
+            rest = clean(rest.difference(claimed))
+        reach *= 2
+    for k in parts:                   # buffering leaves many small arcs; thin them out again
+        parts[k] = clean(parts[k].simplify(tol * 0.5))
+    return rest
+
+
+def claim_rest(zones, C, E, tol, marks, cls_of, parts, taken):
+    """Step 5: area no geometry zone claimed goes to the nearest zone.  Changes `parts` in place."""
+    anchors = dict(parts)
+    for z, mk in marks.items():
+        anchors.setdefault(cls_of[z], Point(mk['ll']))
+    if not anchors and zones:
+        lon = C.representative_point().x
+        z = min(zones, key=lambda z: abs(sig(z, FWD)[0] / 3600 - lon / 15))
+        anchors[cls_of[z]] = Point(0, 0)
+    rest = E if taken is None else clean(E.difference(taken))
+    if parts and not rest.is_empty:
+        rest = grow_parts(parts, rest, tol)
+        anchors = dict(parts) | {k: v for k, v in anchors.items() if k not in parts}
+    leftovers = defaultdict(list)
+    for piece in polys(rest):
+        if anchors:
+            leftovers[min(anchors, key=lambda k: anchors[k].distance(piece))].append(piece)
+    for k, ps in leftovers.items():
+        parts[k] = clean(unary_union(([parts[k]] if k in parts else []) + ps))
+
+
+def drop_nearby_marks(marks, parts, cls, cls_of, C):
+    """A marker is only needed where the zone has no land nearby (and once per group of identical zones)."""
+    for k in parts:
+        for z in cls[k]:
+            if z in marks and Point(marks[z]['ll']).distance(parts[k].intersection(C)) < 0.3:
+                marks.pop(z)
+    return {z: mk for z, mk in marks.items() if not any(cls_of[z] == cls_of[o] for o in marks if o != z and o < z)}
+
+
+def output_parts(parts, used, cls_of, C, cw_exterior):
+    """The regions as written to the page (--detail: a leaner record with caps per polygon)."""
+    out = []
+    for k in parts:
+        inside = parts[k].intersection(C)
+        if inside.is_empty:
+            continue
+        g = geom_out(parts[k], cw_exterior)
+        if not g:
+            continue
+        zs = [z for z in used if cls_of[z] == k]
+        if DETAIL:
+            out.append({'z': zs, 'g': g, 'c': caps(g)})
+        else:
+            c = label_point(inside)
+            out.append({'z': zs, 'g': g, 'c': c, 'a': float('%.3g' % steradians(inside)),
+                        'r': math.ceil(cap_radius(c, parts[k]) * 100) / 100})
+    return out
+
+
+def build_country(name, zones, raw, ctx):
+    """Split one country into per-zone regions.  `zones` is the page's zone list for it."""
     global min_area
+    cfg = SETTINGS.get(name, {})
+    island = bool(cfg.get('island'))
+    min_area = min(MIN_AREA, raw.area * 0.01)
+    C = clean(raw)
+    tol = simplify_for(C.area)
+    E = unary_union([ctx.world.intersection(C.buffer(REACH).simplify(REACH * 0.55))])
+
+    found = find_zones(C, ctx.tf)
+    if island and found:
+        zones = sorted(found)       # else keep the inherited list; the nearest-offset fallback picks one
+    by_z, weak = clip_zones(found, zones, E, tol, ctx)
+    marks = find_marks(cfg, zones, by_z, ctx) if cfg.get('cc') and not island else {}
+    cls, cls_of, parts, taken = merge_zones(zones, by_z)
+    claim_rest(zones, C, E, tol, marks, cls_of, parts, taken)
+    marks = drop_nearby_marks(marks, parts, cls, cls_of, C)
+
+    used = [z for z in zones if cls_of[z] in parts or z in marks]
+    dropped = [z for z in zones if z not in used]
+    out = [] if not parts and not marks else output_parts(parts, used, cls_of, C, ctx.cw_exterior)
+    return CountryResult(used, dropped, weak, out, marks, empty=not parts and not marks)
+
+
+# ---------------------------------------------------------------- main
+def read_countries():
+    """site/countries.js -> (source text, regex match of the DATA object, parsed DATA)."""
     src = open(COUNTRIES, encoding='utf-8').read()
     m = re.search(r'const DATA=(\{.*\});\s*$', src, re.S)
-    data = json.loads(m.group(1))
-    tf = TimezoneFinder()
-    ztab = read_zone_tab()
-    geom_cache = {}
-    world = box(-180, -90, 180, 90)
+    return src, m, json.loads(m.group(1))
 
+
+def page_winding(data):
+    """True if the page's polygons have clockwise exteriors (the output must match)."""
     first = next(f for f in data['features'] if f['geometry']['type'] in ('Polygon', 'MultiPolygon'))
     g0 = first['geometry']['coordinates']
-    cw_exterior = ring_area(g0[0] if first['geometry']['type'] == 'Polygon' else g0[0][0]) < 0
+    return ring_area(g0[0] if first['geometry']['type'] == 'Polygon' else g0[0][0]) < 0
 
-    if not DETAIL:      # rebuilt on every run so the outline always matches this script
-        data['features'] = [f for f in data['features'] if f['properties']['n'] != 'Antarctica']
-        data['features'].append(antarctica_feature(cw_exterior))
 
-    def tz_geometry(name):
-        if name not in geom_cache:
-            rings = tf.get_geometry(tz_name=name, coords_as_pairs=True)
-            ps = [shapely.make_valid(Polygon(p[0], p[1:])) for p in rings]
-            geom_cache[name] = shapely.make_valid(unary_union(ps)).simplify(SIMPLIFY[0])
-        return geom_cache[name]
-
-    report = []
-    ne = load_ne({f['properties']['n']: shapely.make_valid(to_shapely(f['geometry'])).buffer(0) for f in data['features']}) if DETAIL else None
-    detail = {}
-    for f in data['features']:
-        name = f['properties']['n']
-        zones = list(dict.fromkeys(f['properties'].get('z', [])))
-        had_parts = 'parts' in f
-        ant = (f.get('parts'), f.get('marks'))
-        for k in ('parts', 'borders', 'marks'):
-            f.pop(k, None)
-        if DETAIL:
-            if name not in ne:
-                print('no detailed outline for', name, file=sys.stderr)
-                continue
-            gj = geom_out(ne[name], cw_exterior)
-            detail[name] = {'g': gj, 'c': caps(gj)}
-            if name == 'Antarctica':
-                detail[name]['p'] = antarctica_parts(unary_union([p for p in polys(antarctica_geom()) if p.area >= 0.05]), cw_exterior)
-                continue
-            if not had_parts:
-                continue
+def process_feature(f, ctx, ne, detail, report):
+    """Rebuild one feature's zone regions (countries.js mode) or its detail record (--detail mode)."""
+    name = f['properties']['n']
+    zones = list(dict.fromkeys(f['properties'].get('z', [])))
+    had_parts = 'parts' in f
+    ant = (f.get('parts'), f.get('marks'))
+    for k in ('parts', 'borders', 'marks'):
+        f.pop(k, None)
+    if DETAIL:
+        if name not in ne:
+            print('no detailed outline for', name, file=sys.stderr)
+            return
+        gj = geom_out(ne[name], ctx.cw_exterior)
+        detail[name] = {'g': gj, 'c': caps(gj)}
         if name == 'Antarctica':
-            f['parts'], f['marks'] = ant
-            continue
-        if name in EXTRA_ZONES:
-            zones = list(dict.fromkeys(zones + EXTRA_ZONES[name]))
-            f['properties']['z'] = zones
-        if name in DROP_ZONES:
-            zones = [z for z in zones if z not in DROP_ZONES[name]]
-            f['properties']['z'] = zones
-        island = name in ISLANDS
-        if not island and (len(zones) < 2 or name not in CC):
-            continue
-        cc = CC.get(name)
+            detail[name]['p'] = antarctica_parts(unary_union([p for p in polys(antarctica_geom()) if p.area >= 0.05]), ctx.cw_exterior)
+            return
+        if not had_parts:
+            return
+    if name == 'Antarctica':
+        f['parts'], f['marks'] = ant
+        return
+    zones = apply_zone_overrides(f, name, zones)
+    cfg = SETTINGS.get(name, {})
+    if not cfg.get('island') and (len(zones) < 2 or 'cc' not in cfg):
+        return
 
-        raw = ne[name] if DETAIL else to_shapely(f['geometry'])
-        min_area = min(MIN_AREA, raw.area * 0.01)
-        C = clean(raw)
-        tol = simplify_for(C.area)
-        E = unary_union([world.intersection(C.buffer(REACH).simplify(REACH * 0.55))])
+    raw = ne[name] if DETAIL else to_shapely(f['geometry'])
+    r = build_country(name, zones, raw, ctx)
+    f['properties']['z'] = r.used
+    if r.empty:
+        report.append((name, len(zones), 0, 0, r.dropped, r.weak))
+        return
+    if DETAIL:
+        detail[name]['p'] = r.parts
+    elif len(r.parts) + len(r.marks) > 1 or r.marks:
+        f['parts'] = r.parts
+        f['marks'] = list(r.marks.values())
+    report.append((name, len(zones), len(r.parts), len(r.marks), r.dropped, r.weak))
 
-        # 1. which geometry zones sit inside this country?
-        found = set()
-        for p in polys(C):
-            rp = p.representative_point()
-            found.add(tf.timezone_at(lng=rp.x, lat=rp.y))
-            minx, miny, maxx, maxy = p.bounds
-            step = max(0.1, min(1.0, ((maxx - minx) * (maxy - miny)) ** 0.5 / 70))
-            xs, ys, y = [], [], miny
-            while y <= maxy:
-                x = minx
-                while x <= maxx:
-                    xs.append(x); ys.append(y); x += step
-                y += step
-            if xs:
-                for x, y, ok in zip(xs, ys, shapely.contains_xy(p, xs, ys)):
-                    if ok:
-                        found.add(tf.timezone_at(lng=x, lat=y))
-        found = {t for t in found if t and not t.startswith('Etc/')}
-        if island and found:
-            zones = sorted(found)       # else keep the inherited list; the nearest-offset fallback picks one
 
-        # 2. clip each geometry zone to the reach area, name it after the page's zone
-        by_z = defaultdict(list)
-        weak = []
-        for t in sorted(found):
-            piece = clean(tz_geometry(t).intersection(E).simplify(tol))
-            if piece.is_empty or piece.area < min_area:
-                continue
-            if not zones:
-                continue
-            z, s = best_match(t, zones)
-            if s < MATCH_MIN:
-                weak.append(t)          # a neighbour's zone overlapping the coarse outline
-                continue
-            by_z[z].append(piece)
-
-        # 3. zone.tab places inside this country for zones that got no land
-        marks = {}
-        if cc and not island:
-            for t, ll, comment in [r for c in [cc] + EXTRA_CC.get(name, []) for r in ztab.get(c, [])]:
-                z, s = best_match(t, zones)
-                if s >= MATCH_MIN and z not in by_z and z not in marks:
-                    marks[z] = {'z': z, 'll': [rnd(ll[0]), rnd(ll[1])], 'n': comment or t.split('/')[-1].replace('_', ' ')}
-
-        # 4. merge zones that behave identically from now on
-        cls = {}
-        for z in zones:
-            cls.setdefault(sig(z, FWD), []).append(z)
-        cls_of = {z: k for k, zs in cls.items() for z in zs}
-        geo = defaultdict(list)
-        for z, ps in by_z.items():
-            geo[cls_of[z]] += ps
-        order = sorted(geo, key=lambda k: -sum(p.area for p in geo[k]))
-        parts, taken = {}, None
-        for k in order:
-            g = clean(unary_union(geo[k]))
-            if taken is not None:
-                g = clean(g.difference(taken))
-            if g.is_empty:
-                continue
-            parts[k] = g
-            taken = g if taken is None else unary_union([taken, g])
-
-        # 5. area no geometry zone claimed goes to the nearest zone
-        anchors = dict(parts)
-        for z, mk in marks.items():
-            anchors.setdefault(cls_of[z], Point(mk['ll']))
-        if not anchors and zones:
-            lon = C.representative_point().x
-            z = min(zones, key=lambda z: abs(sig(z, FWD)[0] / 3600 - lon / 15))
-            anchors[cls_of[z]] = Point(0, 0)
-        rest = E if taken is None else clean(E.difference(taken))
-        # Unclaimed land (zone shapes rarely line up exactly with the country outline) goes to the zone that
-        # is next to it: grow every zone outward in steps.  Giving a whole connected strip to one zone would
-        # hand a long border to whichever zone merely touches it somewhere.
-        if parts and not rest.is_empty:
-            reach = 0.03 if DETAIL else 0.1
-            while reach <= 6.5 and not rest.is_empty:
-                claimed = None
-                for k in list(parts):
-                    got = clean(rest.intersection(parts[k].buffer(reach)))
-                    if claimed is not None and not got.is_empty:
-                        got = clean(got.difference(claimed))
-                    if got.is_empty:
-                        continue
-                    parts[k] = clean(unary_union([parts[k], got]))
-                    claimed = got if claimed is None else unary_union([claimed, got])
-                if claimed is not None:
-                    rest = clean(rest.difference(claimed))
-                reach *= 2
-            for k in parts:                   # buffering leaves many small arcs; thin them out again
-                parts[k] = clean(parts[k].simplify(tol * 0.5))
-            anchors = dict(parts) | {k: v for k, v in anchors.items() if k not in parts}
-        extra = defaultdict(list)
-        for piece in polys(rest):
-            if anchors:
-                extra[min(anchors, key=lambda k: anchors[k].distance(piece))].append(piece)
-        for k, ps in extra.items():
-            parts[k] = clean(unary_union(([parts[k]] if k in parts else []) + ps))
-
-        for k in parts:                           # a marker is only needed where the zone has no land nearby
-            for z in cls[k]:
-                if z in marks and Point(marks[z]['ll']).distance(parts[k].intersection(C)) < 0.3:
-                    marks.pop(z)
-        marks = {z: mk for z, mk in marks.items() if not any(cls_of[z] == cls_of[o] for o in marks if o != z and o < z)}
-
-        used = [z for z in zones if cls_of[z] in parts or z in marks]
-        dropped = [z for z in zones if z not in used]
-        f['properties']['z'] = used
-        if not parts and not marks:
-            report.append((name, len(zones), 0, 0, dropped, weak))
-            continue
-
-        out_parts = []
-        for k in parts:
-            inside = parts[k].intersection(C)
-            if inside.is_empty:
-                continue
-            g = geom_out(parts[k], cw_exterior)
-            if g and DETAIL:
-                out_parts.append({'z': [z for z in used if cls_of[z] == k], 'g': g, 'c': caps(g)})
-            elif g:
-                c = label_point(inside)
-                out_parts.append({'z': [z for z in used if cls_of[z] == k], 'g': g, 'c': c,
-                                  'a': float('%.3g' % steradians(inside)),
-                                  'r': math.ceil(cap_radius(c, parts[k]) * 100) / 100})
-        groups = len(out_parts) + len(marks)
-        if DETAIL:
-            detail[name]['p'] = out_parts
-        elif groups > 1 or marks:
-            f['parts'] = out_parts
-            f['marks'] = list(marks.values())
-        report.append((name, len(zones), len(out_parts), len(marks), dropped, weak))
-
+def print_report(report):
     print(f'{"feature":<38}{"zones":>6}{"parts":>6}{"marks":>6}  dropped zones | foreign zones skipped')
     for n, nz, np_, nm, dropped, weak in report:
         print(f'{n:<38}{nz:>6}{np_:>6}{nm:>6}  {",".join(dropped)} | {len(weak)}')
 
-    if DETAIL:
-        dump = lambda v: json.dumps(v, separators=(',', ':'), ensure_ascii=False)
-        new = dumps_lines('{"v":1,"f":{', [dump(n) + ':' + dump(e) for n, e in detail.items()])
-        print(f'DETAIL: {len(detail)} features, {len(new)} chars', file=sys.stderr)
-        if not CHECK:
-            open(DETAIL_OUT, 'w', encoding='utf-8').write(new)
-            print('wrote', os.path.normpath(DETAIL_OUT), file=sys.stderr)
-        return
-    dump = lambda v: json.dumps(v, separators=(',', ':'), ensure_ascii=False)
+
+def compact(v):
+    return json.dumps(v, separators=(',', ':'), ensure_ascii=False)
+
+
+def write_detail(detail):
+    new = dumps_lines('{"v":1,"f":{', [compact(n) + ':' + compact(e) for n, e in detail.items()])
+    print(f'DETAIL: {len(detail)} features, {len(new)} chars', file=sys.stderr)
+    if not CHECK:
+        open(DETAIL_OUT, 'w', encoding='utf-8').write(new)
+        print('wrote', os.path.normpath(DETAIL_OUT), file=sys.stderr)
+
+
+def write_countries(src, m, data):
     assert set(data) == {'type', 'features'}, 'unexpected keys in DATA'
-    new = dumps_lines('{"type":"FeatureCollection","features":[', [dump(f) for f in data['features']])
+    new = dumps_lines('{"type":"FeatureCollection","features":[', [compact(f) for f in data['features']])
     print(f'DATA: {len(m.group(1))} -> {len(new)} chars', file=sys.stderr)
     if not CHECK:
         open(COUNTRIES, 'w', encoding='utf-8').write(src[:m.start(1)] + new + src[m.end(1):])
         print('wrote', os.path.normpath(COUNTRIES), file=sys.stderr)
+
+
+def main():
+    src, m, data = read_countries()
+    ctx = Context(page_winding(data))
+    if not DETAIL:      # rebuilt on every run so the outline always matches this script
+        data['features'] = [f for f in data['features'] if f['properties']['n'] != 'Antarctica']
+        data['features'].append(antarctica_feature(ctx.cw_exterior))
+
+    ne = None
+    if DETAIL:
+        ne = load_ne({f['properties']['n']: shapely.make_valid(to_shapely(f['geometry'])).buffer(0) for f in data['features']})
+    detail, report = {}, []
+    for f in data['features']:
+        process_feature(f, ctx, ne, detail, report)
+
+    print_report(report)
+    if DETAIL:
+        write_detail(detail)
+    else:
+        write_countries(src, m, data)
 
 
 if __name__ == '__main__':
