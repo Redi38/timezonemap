@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Add per-time-zone geometry to the countries in site/index.html.
+"""Add per-time-zone geometry to the countries in site/countries.js.
 
 The page ships one polygon per country plus a list of IANA zones (properties.z).
 For countries that span more than one zone this script adds two feature-level keys
@@ -16,7 +16,7 @@ so the globe can draw every zone:
 
 properties.z is trimmed to zones that really exist inside the country.
 
-Usage:  python3 tools/build_zones.py            rewrites site/index.html
+Usage:  python3 tools/build_zones.py            rewrites site/countries.js
         python3 tools/build_zones.py --detail   writes site/detail.json (run it after the line above)
         add --check to either to report only and write nothing
 
@@ -46,7 +46,7 @@ from shapely.ops import unary_union
 from timezonefinder import TimezoneFinder
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-HTML = os.path.join(HERE, '..', 'site', 'index.html')
+COUNTRIES = os.path.join(HERE, '..', 'site', 'countries.js')   # 'const DATA={...};' read by the page
 CHECK = '--check' in sys.argv
 DETAIL = '--detail' in sys.argv
 DETAIL_OUT = os.path.join(HERE, '..', 'site', 'detail.json')
@@ -365,8 +365,8 @@ def load_ne(base):
 # ---------------------------------------------------------------- main
 def main():
     global min_area
-    src = open(HTML, encoding='utf-8').read()
-    m = re.search(r'const DATA=(\{.*?\});\nconst F=', src, re.S)
+    src = open(COUNTRIES, encoding='utf-8').read()
+    m = re.search(r'const DATA=(\{.*\});\s*$', src, re.S)
     data = json.loads(m.group(1))
     tf = TimezoneFinder()
     ztab = read_zone_tab()
@@ -580,8 +580,8 @@ def main():
     new = dumps_lines('{"type":"FeatureCollection","features":[', [dump(f) for f in data['features']])
     print(f'DATA: {len(m.group(1))} -> {len(new)} chars', file=sys.stderr)
     if not CHECK:
-        open(HTML, 'w', encoding='utf-8').write(src[:m.start(1)] + new + src[m.end(1):])
-        print('wrote', os.path.normpath(HTML), file=sys.stderr)
+        open(COUNTRIES, 'w', encoding='utf-8').write(src[:m.start(1)] + new + src[m.end(1):])
+        print('wrote', os.path.normpath(COUNTRIES), file=sys.stderr)
 
 
 if __name__ == '__main__':
