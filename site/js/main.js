@@ -1,7 +1,8 @@
 // Entry point: wires the modules together and starts the frame loop.
 //   tz.js       zone names, offsets, DST, clock strings     (no imports)
 //   zones.js    zone data per country, grouping, colours    (tz)
-//   view.js     projection, camera, drawing, hit-testing    (zones, tz)
+//   detail.js   loads and unpacks the zoomed-in outlines    (no imports)
+//   view.js     projection, camera, drawing, hit-testing    (zones, tz, detail)
 //   tooltip.js  hover tooltip                               (zones, tz, view)
 //   anim.js     frame loop, auto-rotation, fly-to           (view)
 //   search.js   city/country search and its map marker      (zones, tz, view, anim)

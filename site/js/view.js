@@ -2,6 +2,7 @@
 // Owns the camera and the highlighted country; other modules read them through the exports and change them through the functions.
 import {F,col,gcol,refresh} from './zones.js';
 import {fo} from './tz.js';
+import {fetchDetail} from './detail.js';
 export const cv=document.getElementById('g'),ctx=cv.getContext('2d'),wrap=document.getElementById('wrap');
 export const proj=d3.geoOrthographic().precision(.5),path=d3.geoPath(proj,ctx);
 export let W,H,k0=0,k=1,ctr=[0,0],hov=null,hgk=null;   // live bindings: read-only for importers
@@ -16,17 +17,20 @@ export function pan(dx,dy){lastMove=performance.now();rot[0]+=dx*57.3/k;rot[1]=M
 export const zoom=m=>{lastMove=performance.now();k=Math.max(k0*.6,Math.min(k0*12,k*m))};
 export const zoomedIn=()=>k>k0*DZ_LOAD;
 function sun(){const d=new Date(),doy=(d-Date.UTC(d.getUTCFullYear(),0,0))/864e5,dec=-23.44*Math.cos(2*Math.PI/365*(doy+10)),h=d.getUTCHours()+d.getUTCMinutes()/60+d.getUTCSeconds()/3600;return[(12-h)*15,dec]}
-let vr=1.62,det=null,detOn=false,detTried=false;
-// Zoomed in, the page swaps the coarse outlines for detail.json (Natural Earth 10m, zone regions rebuilt to match).
-// It is fetched once the globe is zoomed past DZ_LOAD and used past DZ_USE, and only the polygons in view are drawn.
-const DZ_LOAD=2,DZ_USE=3;
+let vr=1.62,det=null,detOn=false,detLevel=-1;const detTried=[];
+// Zoomed in, the page swaps the coarse outlines for detail-1.json (Natural Earth 10m simplified, zone regions rebuilt to match),
+// and past DZ_FINE for the full detail-2.json.  Each file is fetched once the globe is zoomed past its threshold, so a
+// visitor who only zooms in a little never downloads the fine one.  The detail is used past DZ_USE, and only the polygons
+// in view are drawn.
+const DZ_LOAD=2,DZ_USE=3,DZ_FINE=4,DETAIL=[{url:'detail-1.json',at:DZ_LOAD},{url:'detail-2.json',at:DZ_FINE}];
 export const vis=(c,r)=>d3.geoDistance(ctr,c)-r<vr;
-const capOf=(poly,c)=>({poly,c:[c[0],c[1]],r:c[2]});   // caps come precomputed in detail.json
+const capOf=(poly,c)=>({poly,c:[c[0],c[1]],r:c[2]});   // caps come precomputed in the detail files
 function applyDetail(d){for(const f of F){const e=d.f[f.properties.n];if(!e)continue;
   f.dg=e.g.map((g,i)=>capOf(g,e.c[i]));for(const it of f.dg)f.br=Math.max(f.br,d3.geoDistance(f.bc,it.c)+it.r);   // islands the coarse outline lacks
   f.dp=(e.p||[]).map(p=>({z:p.z,items:p.g.map((g,i)=>capOf(g,p.c[i]))}))}
  det=d}
-function loadDetail(){detTried=true;fetch('detail.json').then(r=>{if(!r.ok)throw 0;return r.json()}).then(d=>{applyDetail(d);refresh()}).catch(()=>{})}
+// A finer level replaces a coarser one; one that arrives late (a coarser file finishing after a finer one) is ignored.
+function loadDetail(i){detTried[i]=true;fetchDetail(DETAIL[i].url).then(d=>{if(i<=detLevel)return;detLevel=i;applyDetail(d);refresh()}).catch(()=>{})}
 // A polygon wholly on the near side is projected vertex by vertex, which is several times faster than d3's path pipeline
 // (resampling and clipping); only polygons crossing the horizon go through d3. Vertices under half a pixel apart are skipped.
 let tgt=ctx,vtol=.8,vmin=.5,moving=false,lastMove=0,dcost=0;const SLOW=30;   // tgt: where polygons are drawn (the canvas, or a Path2D); vtol: vertices closer than this many px are skipped
@@ -74,7 +78,7 @@ const overlays=[];export const addOverlay=fn=>{overlays.push(fn)};
 // busy: the globe is being dragged or flown right now, so the detailed outlines may be dropped to stay smooth
 export function draw(busy){const t0=performance.now();ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,W,H);proj.translate([W/2,H/2]).scale(k).rotate(rot);ctr=[-rot[0],-rot[1]];
  {const hd=Math.hypot(W,H)/2;vr=hd>=k?1.62:Math.min(1.62,Math.asin(hd/k)+.03)}   // angle from the centre to the screen corner
- if(!detTried&&k>k0*DZ_LOAD)loadDetail();moving=busy||performance.now()-lastMove<160;
+ DETAIL.forEach((L,i)=>{if(!detTried[i]&&k>k0*L.at)loadDetail(i)});moving=busy||performance.now()-lastMove<160;
  // The detailed outlines are kept while moving unless drawing them is slow here (dcost, ms per frame, is measured on detail frames):
  // then the coarse outlines are used until the globe stops, so the motion stays smooth.
  detOn=!!det&&k>k0*DZ_USE&&!(moving&&dcost>SLOW);

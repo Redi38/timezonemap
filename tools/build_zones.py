@@ -17,13 +17,14 @@ so the globe can draw every zone:
 properties.z is trimmed to zones that really exist inside the country.
 
 Usage:  python3 tools/build_zones.py            rewrites site/countries.js
-        python3 tools/build_zones.py --detail   writes site/detail.json (run it after the line above)
+        python3 tools/build_zones.py --detail   writes site/detail-1.json and detail-2.json (run it after the line above)
         add --check to either to report only and write nothing
 
 --detail builds the high-resolution geometry the page loads when zoomed in: Natural Earth 10m
 country outlines (downloaded once into tools/.cache) and the same zone regions rebuilt at a
-fine tolerance and clipped to those outlines.  detail.json maps feature name ->
+fine tolerance and clipped to those outlines.  Per feature name it holds
 {g: polygons, c: cap per polygon, p: [{z, g, c}]} (p only for countries that have zone regions).
+tools/detail_pack.py quantizes that into site/detail-1.json (coarse) and site/detail-2.json (fine).
 
 Per-country settings (ISO codes, zones to add or drop, island dependencies) are in tools/zone_settings.json.
 
@@ -33,6 +34,7 @@ zone.tab while the page uses zone1970.tab names, so zones are matched by compari
 their UTC-offset history from 1970 to 2037.
 The matching, zone.tab reading and zone naming are in tools/tz.py.
 """
+import gzip
 import json
 import math
 import os
@@ -46,12 +48,13 @@ from shapely.ops import unary_union
 from timezonefinder import TimezoneFinder
 
 from tz import MATCH_MIN, behaviour, best_match, fixed_zone, is_conventional, offset_hours, read_zone_tab, zone_city
+from detail_pack import LEVELS, pack_level
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 COUNTRIES = os.path.join(HERE, '..', 'site', 'countries.js')   # 'const DATA={...};' read by the page
 CHECK = '--check' in sys.argv
 DETAIL = '--detail' in sys.argv
-DETAIL_OUT = os.path.join(HERE, '..', 'site', 'detail.json')
+SITE = os.path.join(HERE, '..', 'site')
 NE_FILE = os.path.join(HERE, '.cache', 'ne_10m_admin_0_countries.geojson')
 NE_URL = 'https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_admin_0_countries.geojson'
 DET_TOL = 0.006        # degrees (~600 m); detail outlines are simplified by this much
@@ -590,11 +593,18 @@ def compact(v):
 
 
 def write_detail(detail):
-    new = dumps_lines('{"v":1,"f":{', [compact(n) + ':' + compact(e) for n, e in detail.items()])
-    print(f'DETAIL: {len(detail)} features, {len(new)} chars', file=sys.stderr)
-    if not CHECK:
-        open(DETAIL_OUT, 'w', encoding='utf-8').write(new)
-        print('wrote', os.path.normpath(DETAIL_OUT), file=sys.stderr)
+    """One file per detail level (see detail_pack.py)."""
+    for level in LEVELS:
+        feats, lost = pack_level(detail, level, caps, densify)
+        new = dumps_lines('{"v":2,"q":%d,"f":{' % level['q'], [compact(n) + ':' + compact(e) for n, e in feats.items()])
+        gz = len(gzip.compress(new.encode('utf-8'), 6))
+        print(f'DETAIL {level["file"]}: {len(feats)} features, {len(new)} chars, {gz} gzipped', file=sys.stderr)
+        if lost:
+            print('  left out (outline vanished at this level):', ', '.join(lost), file=sys.stderr)
+        if not CHECK:
+            path = os.path.join(SITE, level['file'])
+            open(path, 'w', encoding='utf-8').write(new)
+            print('wrote', os.path.normpath(path), file=sys.stderr)
 
 
 def write_countries(src, m, data):
