@@ -1,6 +1,6 @@
 // Projection and drawing: the orthographic globe, camera (rotation and zoom), detailed outlines, hit-testing and the frame renderer.
 // Owns the camera and the highlighted country; other modules read them through the exports and change them through the functions.
-import {F,col,gcol,refresh} from './zones.js';
+import {F,col,gcol,refresh,zver} from './zones.js';
 import {fo} from './tz.js';
 import {fetchDetail} from './detail.js';
 export const cv=document.getElementById('g'),ctx=cv.getContext('2d'),wrap=document.getElementById('wrap');
@@ -52,13 +52,14 @@ const hasIn=(it,ll)=>d3.geoDistance(ll,it.c)<=it.r+.002&&d3.geoContains({type:'P
 export function inF(f,ll){if(d3.geoDistance(ll,f.bc)>f.br+.01)return false;return detOn&&f.dg?f.dg.some(it=>hasIn(it,ll)):d3.geoContains(f,ll)}
 // Zone regions reach a little past the country, so they are clipped to its outline. Each group is stroked and then filled over
 // its own inner half: that leaves a separator only where two different groups meet and hides seams between zones that behave the same.
-function drawZones(f){ctx.save();let P=null;   // zoomed in the outline is built once as a Path2D and reused for the clip and the final stroke
+// only: a group key to repaint, highlighted, over the cached layer (hover); undefined draws the whole country.
+function drawZones(f,only){ctx.save();let P=null;   // zoomed in the outline is built once as a Path2D and reused for the clip and the final stroke
  if(detOn&&f.dg){P=new Path2D();tgt=P;pathF(f);tgt=ctx;ctx.clip(P)}else{ctx.beginPath();pathF(f);ctx.clip()}
- for(const g of f.gs){let n=0;ctx.beginPath();
+ for(const g of f.gs){if(only!==undefined&&g.k!==only)continue;let n=0;ctx.beginPath();
   if(detOn&&g.dp.length){for(const dp of g.dp)for(const it of dp.items)if(vis(it.c,it.r)){itemPath(it);n++}}
   else for(const p of g.parts)if(vis(p.c,p.r)){path(p.geo);n++}
-  if(!n)continue;ctx.lineWidth=1.3;ctx.strokeStyle='rgba(6,12,24,.6)';ctx.stroke();ctx.fillStyle=gcol(g,f===hov&&g.k===hgk);ctx.fill()}
- ctx.restore();if(P)ctx.stroke(P);else{ctx.beginPath();pathF(f);ctx.stroke()}}
+  if(!n)continue;ctx.lineWidth=1.3;ctx.strokeStyle='rgba(6,12,24,.6)';ctx.stroke();ctx.fillStyle=gcol(g,only!==undefined||(inl&&f===hov&&g.k===hgk));ctx.fill()}
+ ctx.restore();if(only!==undefined)return;if(P)ctx.stroke(P);else{ctx.beginPath();pathF(f);ctx.stroke()}}
 // Zones too small for the country outline (islands, enclaves) get a dot at their real position.
 function drawMarks(){for(const f of F){if(!f.gs||f.gs.length<2)continue;
  for(const g of f.gs){
@@ -72,6 +73,16 @@ function label(c,a,t,n){const px=a*k*k;if(px<480||d3.geoDistance(ctr,c)>1.25)ret
  if(big&&n){ctx.font='10px system-ui,sans-serif';ctx.lineWidth=2.5;const y=p[1]+(t?13:0);ctx.strokeText(n,p[0],y);ctx.fillStyle='rgba(235,242,255,.85)';ctx.fillText(n,p[0],y)}
  return p}
 // ---- frame
+let inl=false,cKey='',pKey='';const cache=document.createElement('canvas'),cctx=cache.getContext('2d');
+function drawBase(){
+ ctx.beginPath();path({type:'Sphere'});const g=ctx.createRadialGradient(W/2-k*.35,H/2-k*.35,k*.1,W/2,H/2,k);g.addColorStop(0,'#1d4272');g.addColorStop(1,'#08152b');ctx.fillStyle=g;ctx.fill();
+ ctx.beginPath();path(d3.geoGraticule10());ctx.strokeStyle='rgba(255,255,255,.07)';ctx.lineWidth=.6;ctx.stroke();
+ ctx.lineWidth=.6;ctx.strokeStyle='rgba(6,12,24,.75)';
+ for(const f of F){if(!vis(f.bc,f.br))continue;if(f.gs&&f.gs.length>1){drawZones(f);continue}ctx.beginPath();pathF(f);ctx.fillStyle=col(f,inl&&f===hov);ctx.fill();ctx.stroke()}}
+// The hovered country (for a multi-zone one, only the hovered zone group) in its highlight colour, over the base layer.
+function paintHover(){const f=hov;ctx.lineWidth=.6;ctx.strokeStyle='rgba(6,12,24,.75)';
+ if(f.gs&&f.gs.length>1){if(hgk!==null&&vis(f.bc,f.br))drawZones(f,hgk);return}
+ if(!vis(f.bc,f.br))return;ctx.beginPath();pathF(f);ctx.fillStyle=col(f,true);ctx.fill();ctx.stroke()}
 // Extra layers drawn at the end of every frame, in registration order (the search marker, the tooltip). Kept as hooks so that
 // this module does not need to know about them.
 const overlays=[];export const addOverlay=fn=>{overlays.push(fn)};
@@ -84,10 +95,17 @@ export function draw(busy){const t0=performance.now();ctx.setTransform(dpr,0,0,d
  detOn=!!det&&k>k0*DZ_USE&&!(moving&&dcost>SLOW);
 
 
- ctx.beginPath();path({type:'Sphere'});const g=ctx.createRadialGradient(W/2-k*.35,H/2-k*.35,k*.1,W/2,H/2,k);g.addColorStop(0,'#1d4272');g.addColorStop(1,'#08152b');ctx.fillStyle=g;ctx.fill();
- ctx.beginPath();path(d3.geoGraticule10());ctx.strokeStyle='rgba(255,255,255,.07)';ctx.lineWidth=.6;ctx.stroke();
- ctx.lineWidth=.6;ctx.strokeStyle='rgba(6,12,24,.75)';
- for(const f of F){if(!vis(f.bc,f.br))continue;if(f.gs&&f.gs.length>1){drawZones(f);continue}ctx.beginPath();pathF(f);ctx.fillStyle=col(f,f===hov);ctx.fill();ctx.stroke()}
+ // The base layer (sphere, graticule, every country filled in its zone colours) is by far the most expensive part of a frame and
+ // depends only on the camera and the zone data. Once the camera has been still for a frame it is copied into `cache`, and later
+ // frames blit that copy; the hovered country is repainted over it, so a hover change never invalidates it. While the globe moves
+ // there is nothing to reuse: it is drawn straight to the canvas as before, hover colour included, and no copy is made.
+ const key=[W,H,dpr,k,rot[0],rot[1],detOn,detLevel,zver].join(),still=!moving;inl=moving;let drew=true;
+ if(still&&key===cKey){ctx.setTransform(1,0,0,1,0,0);ctx.drawImage(cache,0,0);ctx.setTransform(dpr,0,0,dpr,0,0);drew=false}
+ else{drawBase();
+  if(still&&key===pKey){if(cache.width!==cv.width||cache.height!==cv.height){cache.width=cv.width;cache.height=cv.height}
+   cctx.clearRect(0,0,cache.width,cache.height);cctx.drawImage(cv,0,0);cKey=key}}
+ pKey=key;
+ if(!inl&&hov)paintHover();
  const s=sun();ctx.beginPath();path(d3.geoCircle().center([s[0]+180,-s[1]]).radius(90)());ctx.fillStyle='rgba(2,6,20,.45)';ctx.fill();
  if(hov){ctx.beginPath();pathF(hov);ctx.strokeStyle='#fff';ctx.lineWidth=1.6;ctx.stroke()}
  ctx.beginPath();ctx.arc(W/2,H/2,k,0,6.2832);ctx.strokeStyle='rgba(140,190,255,.4)';ctx.lineWidth=1.5;ctx.stroke();
@@ -99,7 +117,7 @@ export function draw(busy){const t0=performance.now();ctx.setTransform(dpr,0,0,d
    const q=f.a*k*k>3600&&d3.geoDistance(ctr,f.c)<=1.25&&proj(f.c);   // country name only where it clears the clocks
    if(q&&lp.every(p=>Math.hypot(p[0]-q[0],p[1]-q[1])>48))label(f.c,f.a,'',f.properties.n);continue}
   if(!f.tz){label(f.c,f.a,'',f.properties.n);continue}label(f.c,f.a,f.t,f.properties.n)}   // no official time: just the name
- for(const fn of overlays)fn();if(detOn)dcost=dcost*.8+(performance.now()-t0)*.2}
+ for(const fn of overlays)fn();if(detOn&&drew)dcost=dcost*.8+(performance.now()-t0)*.2}   // blit-only frames say nothing about the cost of drawing
 // ---- hit-testing: sets the highlighted country (hov) and, for multi-zone countries, the highlighted zone group (hgk)
 function pickAt(x,y){if(Math.hypot(x-W/2,y-H/2)>k)return null;const ll=proj.invert([x,y]);return ll?F.find(f=>inF(f,ll))||null:null}
 export function pick(x,y){hov=null;hgk=null;

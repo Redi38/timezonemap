@@ -3,6 +3,7 @@
 import {offOf,isKnownZone,nearestZone,zoneRule,clock} from './tz.js';
 export const F=DATA.features;
 export let now=new Date();
+export let zver=0;   // bumped by refresh(): whatever was drawn from the zone data is out of date
 // One entry per distinct (current offset, DST rule); zones that behave identically are merged.
 export function zoneGroups(f){const m=new Map();
  for(const z of f.z){const {o,i,k}=zoneRule(z,now);
@@ -20,7 +21,7 @@ F.forEach(f=>{const g=f.geometry,ps=g.type==='Polygon'?[g.coordinates]:g.coordin
  f.z=(f.properties.z||[]).filter(z=>isKnownZone(z,now));
  if(f.parts){f.marks=f.marks||[];f.parts.forEach(p=>p.geo={type:'MultiPolygon',coordinates:p.g})}
  f.bc=d3.geoCentroid(f);if(!isFinite(f.bc[0]))f.bc=f.c;f.br=0;for(const pl of g.type==='Polygon'?[g.coordinates]:g.coordinates)for(const q of pl[0])f.br=Math.max(f.br,d3.geoDistance(f.bc,q))});
-export function refresh(){now=new Date();F.forEach(f=>{const b=nearestZone(f.z,f.c[0],now);
+export function refresh(){now=new Date();zver++;F.forEach(f=>{const b=nearestZone(f.z,f.c[0],now);
  f.tz=b;f.off=b?offOf(b,now):null;f.gs=f.parts?mapGroups(f):null});stamp()}
 export function stamp(){now=new Date();F.forEach(f=>{f.t=f.tz?clock(f.tz,now):'';if(f.gs)for(const g of f.gs)g.t=clock(g.tz,now)});
  document.getElementById('utc').textContent='UTC '+now.toISOString().slice(11,19)}
