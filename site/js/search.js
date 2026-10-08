@@ -3,12 +3,13 @@ import {F} from './zones.js';
 import {offOf,fo,clock,zoneName} from './tz.js';
 import {ctx,proj,ctr,k,k0,vis,pathF,inF} from './view.js';
 import {setAuto,flyTo,cancelFly} from './anim.js';
+import {DATA} from './data-files.js';
 const qEl=document.getElementById('q'),resEl=document.getElementById('res'),foundEl=document.getElementById('found');
 const nrm=t=>t.normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/[^a-z0-9 ,'-]/g,' ').replace(/\s+/g,' ').trim();
 const CALIAS={usa:'United States of America',us:'United States of America','united states':'United States of America',america:'United States of America',uk:'United Kingdom',britain:'United Kingdom',england:'United Kingdom',china:"People's Republic of China",czechia:'Czech Republic',burma:'Myanmar','cote d\'ivoire':'Ivory Coast',holland:'Netherlands',russia:'Russia'};
 let cities=null,cityTried=false,cIdx=[],items=[],cur=-1,sel=null;
 const cntIdx=F.map(f=>({kind:'country',n:f.properties.n,f,key:nrm(f.properties.n)}));
-function loadCities(){if(cityTried)return;cityTried=true;fetch('cities.json').then(r=>{if(!r.ok)throw 0;return r.json()}).then(d=>{
+function loadCities(){if(cityTried)return;cityTried=true;fetch(DATA['cities.json']).then(r=>{if(!r.ok)throw 0;return r.json()}).then(d=>{
  cities=d;cIdx=d.c.map(r=>({kind:'city',n:r[0],cc:r[1],cn:d.k[r[1]]||r[1],ll:[r[3],r[2]],tz:r[4],pop:r[5],key:nrm(r[0]),alt:r[6]?nrm(r[6]):'',ckey:nrm(d.k[r[1]]||'')}));
  if(qEl.value)search()}).catch(()=>{cityTried=false;cities=null})}
 function score(key,q){return key===q?0:key.startsWith(q)?1:key.includes(' '+q)?2:key.includes(q)?3:9}

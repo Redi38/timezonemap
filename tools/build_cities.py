@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Writes site/cities.json: the cities the page's search box knows (population >= 100k, plus every capital).
+"""Writes site/cities.<hash>.json (see data_files.py): the cities the page's search box knows (population >= 100k, plus every capital).
 
 Source: the geonamescache package (GeoNames).  Run: pip install geonamescache && python3 tools/build_cities.py
 Format: {"v":1,"k":{cc: country name},"c":[[name, cc, lat, lon, timezone, population, alt-name?], ...]} sorted by population.
 """
 import json, os, unicodedata
 import geonamescache
+from data_files import publish
 
-OUT = os.path.join(os.path.dirname(__file__), '..', 'site', 'cities.json')
 MIN_POP = 100_000
 
 # Older or Russian-style spellings people still type.
@@ -41,8 +41,8 @@ def main():
     k = {iso: countries[iso]['name'] for iso in sorted(used) if iso in countries}
     dump = lambda v: json.dumps(v, separators=(',', ':'), ensure_ascii=False)
     text = '{"v":1,"k":' + dump(k) + ',"c":[\n' + ',\n'.join(dump(r) for r in rows) + '\n]}\n'
-    open(OUT, 'w', encoding='utf-8').write(text)
-    print(len(rows), 'cities,', len(text) // 1024, 'KiB')
+    name = publish('cities.json', text)
+    print(len(rows), 'cities,', len(text) // 1024, 'KiB ->', name)
 
 if __name__ == '__main__':
     main()

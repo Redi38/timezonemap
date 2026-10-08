@@ -17,14 +17,14 @@ so the globe can draw every zone:
 properties.z is trimmed to zones that really exist inside the country.
 
 Usage:  python3 tools/build_zones.py            rewrites site/countries.js
-        python3 tools/build_zones.py --detail   writes site/detail-1.json and detail-2.json (run it after the line above)
+        python3 tools/build_zones.py --detail   writes site/detail-1.<hash>.json and detail-2.<hash>.json (run it after the line above)
         add --check to either to report only and write nothing
 
 --detail builds the high-resolution geometry the page loads when zoomed in: Natural Earth 10m
 country outlines (downloaded once into tools/.cache) and the same zone regions rebuilt at a
 fine tolerance and clipped to those outlines.  Per feature name it holds
 {g: polygons, c: cap per polygon, p: [{z, g, c}]} (p only for countries that have zone regions).
-tools/detail_pack.py quantizes that into site/detail-1.json (coarse) and site/detail-2.json (fine).
+tools/detail_pack.py quantizes that into site/detail-1.<hash>.json (coarse) and site/detail-2.<hash>.json (fine); see data_files.py for the names.
 
 Per-country settings (ISO codes, zones to add or drop, island dependencies) are in tools/zone_settings.json.
 
@@ -49,6 +49,7 @@ from timezonefinder import TimezoneFinder
 
 from tz import MATCH_MIN, behaviour, best_match, fixed_zone, is_conventional, offset_hours, read_zone_tab, zone_city
 from detail_pack import LEVELS, pack_level
+from data_files import publish
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 COUNTRIES = os.path.join(HERE, '..', 'site', 'countries.js')   # 'const DATA={...};' read by the page
@@ -602,9 +603,7 @@ def write_detail(detail):
         if lost:
             print('  left out (outline vanished at this level):', ', '.join(lost), file=sys.stderr)
         if not CHECK:
-            path = os.path.join(SITE, level['file'])
-            open(path, 'w', encoding='utf-8').write(new)
-            print('wrote', os.path.normpath(path), file=sys.stderr)
+            print('wrote', os.path.normpath(os.path.join(SITE, publish(level['file'], new))), file=sys.stderr)
 
 
 def write_countries(src, m, data):

@@ -5,7 +5,8 @@ There are two levels; the page fetches them as the globe is zoomed in:
   detail-1.json  outlines simplified to 0.03 degrees, on a 1/250-degree grid            used from 3x zoom
   detail-2.json  the full outlines, on a 1/500-degree grid                                  fetched past 4x zoom
 
-so a visitor who only zooms in a little never downloads the fine one.
+so a visitor who only zooms in a little never downloads the fine one.  On disk each name carries a content hash
+(detail-1.<hash>.json); the page looks the current one up in js/data-files.js, which data_files.py writes.
 
 Format (TopoJSON-style quantization, without the shared arcs):
 

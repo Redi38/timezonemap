@@ -3,6 +3,7 @@
 import {F,col,gcol,refresh,zver} from './zones.js';
 import {fo} from './tz.js';
 import {fetchDetail} from './detail.js';
+import {DATA} from './data-files.js';
 export const cv=document.getElementById('g'),ctx=cv.getContext('2d'),wrap=document.getElementById('wrap');
 export const proj=d3.geoOrthographic().precision(.5),path=d3.geoPath(proj,ctx);
 export let W,H,k0=0,k=1,ctr=[0,0],hov=null,hgk=null;   // live bindings: read-only for importers
@@ -22,7 +23,7 @@ let vr=1.62,det=null,detOn=false,detLevel=-1;const detTried=[];
 // and past DZ_FINE for the full detail-2.json.  Each file is fetched once the globe is zoomed past its threshold, so a
 // visitor who only zooms in a little never downloads the fine one.  The detail is used past DZ_USE, and only the polygons
 // in view are drawn.
-const DZ_LOAD=2,DZ_USE=3,DZ_FINE=4,DETAIL=[{url:'detail-1.json',at:DZ_LOAD},{url:'detail-2.json',at:DZ_FINE}];
+const DZ_LOAD=2,DZ_USE=3,DZ_FINE=4,DETAIL=[{url:DATA['detail-1.json'],at:DZ_LOAD},{url:DATA['detail-2.json'],at:DZ_FINE}];
 export const vis=(c,r)=>d3.geoDistance(ctr,c)-r<vr;
 const capOf=(poly,c)=>({poly,c:[c[0],c[1]],r:c[2]});   // caps come precomputed in the detail files
 function applyDetail(d){for(const f of F){const e=d.f[f.properties.n];if(!e)continue;
