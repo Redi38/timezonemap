@@ -58,6 +58,7 @@ DETAIL = '--detail' in sys.argv
 SITE = os.path.join(HERE, '..', 'site')
 NE_FILE = os.path.join(HERE, '.cache', 'ne_10m_admin_0_countries.geojson')
 NE_URL = 'https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_admin_0_countries.geojson'
+BORDER_1899_LAT = 22   # degrees north; Egypt-Sudan border of the 1899 Condominium agreement
 DET_TOL = 0.006        # degrees (~600 m); detail outlines are simplified by this much
 
 SIMPLIFY = (0.04, 0.15)  # degrees; zone borders are simplified more in bigger countries
@@ -302,7 +303,19 @@ def load_ne(base):
         if n in touched:        # close the hairline gaps between pieces that came from different features
             g = g.buffer(0.003, join_style=2).buffer(-0.003, join_style=2)
         out[n] = g
+    apply_1899_sudan_border(out)
     return out
+
+
+def apply_1899_sudan_border(out):
+    """Egypt-Sudan border as the 1899 Anglo-Egyptian agreement drew it: the 22nd parallel, nothing else.
+
+    Natural Earth follows the later administrative line (Wadi Halfa salient north of 22, Bir Tawil left out of both
+    countries, border ~500 m south of 22).  The page gives Bir Tawil to Sudan, so the two outlines are re-cut at 22N."""
+    if 'Egypt' in out and 'Sudan' in out:
+        both = unary_union([out['Egypt'], out['Sudan']])
+        out['Egypt'] = both.intersection(box(-180, BORDER_1899_LAT, 180, 90))
+        out['Sudan'] = both.intersection(box(-180, -90, 180, BORDER_1899_LAT))
 
 
 # ---------------------------------------------------------------- per-country steps
