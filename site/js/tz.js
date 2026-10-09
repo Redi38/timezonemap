@@ -16,7 +16,7 @@ const fm={};
 function fmt(tz,key,o){const id=tz+'|'+key;return fm[id]||(fm[id]=new Intl.DateTimeFormat('en-GB',{timeZone:tz,...o}))}
 export const clock=(tz,d,sec)=>fmt(tz,'c'+h12+!!sec,{hour:'2-digit',minute:'2-digit',...(sec?{second:'2-digit'}:null),hour12:h12}).format(d);
 export const dayStr=(tz,d)=>fmt(tz,'d',{weekday:'short',day:'numeric',month:'short'}).format(d);
-const dateStr=(tz,d)=>fmt(tz,'m',{day:'numeric',month:'short'}).format(d);
+export const dateStr=(tz,d)=>fmt(tz,'m',{day:'numeric',month:'short'}).format(d);
 export function fo(o){const a=Math.abs(o),h=Math.floor(a),m=Math.round((a-h)*60);return 'UTC'+(o<0?'−':'+')+h+(m?':'+String(m).padStart(2,'0'):'')}
 
 // ---- UTC offsets, in hours
@@ -41,3 +41,20 @@ export function dstInfo(tz){const c=dstc[tz];if(c&&Date.now()<c.exp)return c;
  return dstc[tz]={dst:true,exp,sOff:up.to,wOff:dn.to,sName:zname(tz,up.t+DAY),wName:zname(tz,dn.t+DAY),next:dateStr(tz,tr[0].t)}}
 // Zones with the same key behave identically right now and from now on: same offset, same DST rule.
 export function zoneRule(tz,d){const o=offOf(tz,d),i=dstInfo(tz);return{o,i,k:o+'|'+(i.special?'m':i.dst?i.sOff+'/'+i.wOff:'-')}}
+
+// ---- clock changes within one calendar month (the viewer's local month)
+// Any move of the UTC offset counts: daylight saving starting or ending, and permanent changes of standard time.
+const mcc={};
+export const monthName=d=>new Intl.DateTimeFormat('en-GB',{month:'long',year:'numeric'}).format(d);
+// [{t, from, to, tz}] in time order; t is the instant (ms) of the change, from/to the offsets in hours
+export function monthChanges(tz,d){const key=tz+'|'+d.getFullYear()+'-'+d.getMonth();if(mcc[key])return mcc[key];
+ const a=new Date(d.getFullYear(),d.getMonth(),1).getTime(),b=new Date(d.getFullYear(),d.getMonth()+1,1).getTime(),DAY=864e5,out=[];
+ let pt=a,po=offOf(tz,new Date(pt));
+ for(let t=a+DAY;;t+=DAY){t=Math.min(t,b-1);const o=offOf(tz,new Date(t));
+  if(o!==po){let lo=pt,hi=t;while(hi-lo>6e4){const m=Math.floor((lo+hi)/2);if(offOf(tz,new Date(m))===po)lo=m;else hi=m}out.push({t:hi,from:po,to:o,tz})}
+  pt=t;po=o;if(t>=b-1)break}
+ return mcc[key]=out}
+const hm=a=>{const h=Math.floor(a),m=Math.round((a-h)*60);return(h?h+' h':'')+(h&&m?' ':'')+(m?m+' min':'')};
+// 'Sun 25 Oct · back 1 h' (local date of the change) and the short form for map labels, '25 Oct −1 h'
+export const changeText=c=>`${dayStr(c.tz,new Date(c.t))} · ${c.to>c.from?'forward':'back'} ${hm(Math.abs(c.to-c.from))}`;
+export const changeBadge=c=>`${dateStr(c.tz,new Date(c.t))} ${c.to>c.from?'+':'−'}${hm(Math.abs(c.to-c.from))}`;

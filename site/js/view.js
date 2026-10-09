@@ -1,12 +1,13 @@
 // Projection and drawing: the orthographic globe, camera (rotation and zoom), detailed outlines, hit-testing and the frame renderer.
 // Owns the camera and the highlighted country; other modules read them through the exports and change them through the functions.
 import {F,col,gcol,refresh,zver} from './zones.js';
-import {fo} from './tz.js';
+import {fo,changeBadge} from './tz.js';
 import {fetchDetail} from './detail.js';
 import {DATA} from './data-files.js';
 export const cv=document.getElementById('g'),ctx=cv.getContext('2d'),wrap=document.getElementById('wrap');
 export const proj=d3.geoOrthographic().precision(.5),path=d3.geoPath(proj,ctx);
 export let W,H,k0=0,k=1,ctr=[0,0],hov=null,hgk=null;   // live bindings: read-only for importers
+export let showChg=!1;export const setShowChg=v=>{showChg=v};   // clock-change layer on/off
 let dpr=1;const rot=[new Date().getTimezoneOffset()/4,-20];
 export function size(){dpr=window.devicePixelRatio||1;W=wrap.clientWidth;H=wrap.clientHeight;cv.width=W*dpr;cv.height=H*dpr;cv.style.width=W+'px';cv.style.height=H+'px';
  const nk=Math.min(W,H)/2*.94;k=k0?k*nk/k0:nk;k0=nk}
@@ -59,7 +60,7 @@ function drawZones(f,only){ctx.save();let P=null;   // zoomed in the outline is 
  for(const g of f.gs){if(only!==undefined&&g.k!==only)continue;let n=0;ctx.beginPath();
   if(detOn&&g.dp.length){for(const dp of g.dp)for(const it of dp.items)if(vis(it.c,it.r)){itemPath(it);n++}}
   else for(const p of g.parts)if(vis(p.c,p.r)){path(p.geo);n++}
-  if(!n)continue;ctx.lineWidth=1.3;ctx.strokeStyle='rgba(6,12,24,.6)';ctx.stroke();ctx.fillStyle=gcol(g,only!==undefined||(inl&&f===hov&&g.k===hgk));ctx.fill()}
+  if(!n)continue;ctx.lineWidth=1.3;ctx.strokeStyle='rgba(6,12,24,.6)';ctx.stroke();ctx.fillStyle=gcol(g,only!==undefined||(inl&&f===hov&&g.k===hgk));ctx.fill();chgTint(!!g.chg)}
  ctx.restore();if(only!==undefined)return;if(P)ctx.stroke(P);else{ctx.beginPath();pathF(f);ctx.stroke()}}
 // Zones too small for the country outline (islands, enclaves) get a dot at their real position.
 function drawMarks(){for(const f of F){if(!f.gs||f.gs.length<2)continue;
@@ -68,10 +69,16 @@ function drawMarks(){for(const f of F){if(!f.gs||f.gs.length<2)continue;
    ctx.beginPath();ctx.arc(p[0],p[1],on?6:4.5,0,6.2832);ctx.fillStyle=gcol(g,on);ctx.fill();ctx.lineWidth=1.6;ctx.strokeStyle='#fff';ctx.stroke();
    if(on||k>k0*1.7){ctx.font='650 12px system-ui,sans-serif';ctx.lineWidth=3;ctx.strokeStyle='rgba(5,10,20,.85)';ctx.fillStyle='#fff';ctx.strokeText(g.t,p[0],p[1]-12);ctx.fillText(g.t,p[0],p[1]-12);
     if(on||k>k0*3.5){ctx.font='10px system-ui,sans-serif';ctx.lineWidth=2.5;ctx.strokeText(m.n,p[0],p[1]+13);ctx.fillStyle='rgba(235,242,255,.85)';ctx.fillText(m.n,p[0],p[1]+13)}}}}}}
-function label(c,a,t,n){const px=a*k*k;if(px<480||d3.geoDistance(ctr,c)>1.25)return null;const p=proj(c);if(!p)return null;
+// Clock-change layer: what changes its clocks this month is tinted amber and outlined, everything else is dimmed.
+// Called right after a country (or zone group) was filled, while its path is still current.
+function chgTint(on){if(!showChg)return;const lw=ctx.lineWidth,ss=ctx.strokeStyle;ctx.fillStyle=on?'rgba(255,196,40,.45)':'rgba(5,10,22,.55)';ctx.fill();
+ if(on){ctx.lineWidth=2.2;ctx.strokeStyle='#ffc233';ctx.stroke()}ctx.lineWidth=lw;ctx.strokeStyle=ss}
+const badge=o=>showChg&&o.chg?changeBadge(o.chg[0]):'';
+function label(c,a,t,n,x){const px=a*k*k;if(px<480||d3.geoDistance(ctr,c)>1.25)return null;const p=proj(c);if(!p)return null;
  const big=px>3600;ctx.font='650 12px system-ui,sans-serif';ctx.lineWidth=3;ctx.strokeStyle='rgba(5,10,20,.85)';ctx.fillStyle='#fff';
  if(t){ctx.strokeText(t,p[0],p[1]);ctx.fillText(t,p[0],p[1])}
  if(big&&n){ctx.font='10px system-ui,sans-serif';ctx.lineWidth=2.5;const y=p[1]+(t?13:0);ctx.strokeText(n,p[0],y);ctx.fillStyle='rgba(235,242,255,.85)';ctx.fillText(n,p[0],y)}
+ if(x){ctx.font='650 10.5px system-ui,sans-serif';ctx.lineWidth=2.5;ctx.strokeStyle='rgba(5,10,20,.9)';ctx.fillStyle='#ffd34d';const y=p[1]+13*((t?1:0)+(big&&n?1:0));ctx.strokeText(x,p[0],y);ctx.fillText(x,p[0],y)}
  return p}
 // ---- frame
 let inl=false,cKey='',pKey='';const cache=document.createElement('canvas'),cctx=cache.getContext('2d');
@@ -79,11 +86,11 @@ function drawBase(){
  ctx.beginPath();path({type:'Sphere'});const g=ctx.createRadialGradient(W/2-k*.35,H/2-k*.35,k*.1,W/2,H/2,k);g.addColorStop(0,'#1d4272');g.addColorStop(1,'#08152b');ctx.fillStyle=g;ctx.fill();
  ctx.beginPath();path(d3.geoGraticule10());ctx.strokeStyle='rgba(255,255,255,.07)';ctx.lineWidth=.6;ctx.stroke();
  ctx.lineWidth=.6;ctx.strokeStyle='rgba(6,12,24,.75)';
- for(const f of F){if(!vis(f.bc,f.br))continue;if(f.gs&&f.gs.length>1){drawZones(f);continue}ctx.beginPath();pathF(f);ctx.fillStyle=col(f,inl&&f===hov);ctx.fill();ctx.stroke()}}
+ for(const f of F){if(!vis(f.bc,f.br))continue;if(f.gs&&f.gs.length>1){drawZones(f);continue}ctx.beginPath();pathF(f);ctx.fillStyle=col(f,inl&&f===hov);ctx.fill();ctx.stroke();chgTint(!!f.chg)}}
 // The hovered country (for a multi-zone one, only the hovered zone group) in its highlight colour, over the base layer.
 function paintHover(){const f=hov;ctx.lineWidth=.6;ctx.strokeStyle='rgba(6,12,24,.75)';
  if(f.gs&&f.gs.length>1){if(hgk!==null&&vis(f.bc,f.br))drawZones(f,hgk);return}
- if(!vis(f.bc,f.br))return;ctx.beginPath();pathF(f);ctx.fillStyle=col(f,true);ctx.fill();ctx.stroke()}
+ if(!vis(f.bc,f.br))return;ctx.beginPath();pathF(f);ctx.fillStyle=col(f,true);ctx.fill();ctx.stroke();chgTint(!!f.chg)}
 // Extra layers drawn at the end of every frame, in registration order (the search marker, the tooltip). Kept as hooks so that
 // this module does not need to know about them.
 const overlays=[];export const addOverlay=fn=>{overlays.push(fn)};
@@ -100,7 +107,7 @@ export function draw(busy){const t0=performance.now();ctx.setTransform(dpr,0,0,d
  // depends only on the camera and the zone data. Once the camera has been still for a frame it is copied into `cache`, and later
  // frames blit that copy; the hovered country is repainted over it, so a hover change never invalidates it. While the globe moves
  // there is nothing to reuse: it is drawn straight to the canvas as before, hover colour included, and no copy is made.
- const key=[W,H,dpr,k,rot[0],rot[1],detOn,detLevel,zver].join(),still=!moving;inl=moving;let drew=true;
+ const key=[W,H,dpr,k,rot[0],rot[1],detOn,detLevel,zver,showChg].join(),still=!moving;inl=moving;let drew=true;
  if(still&&key===cKey){ctx.setTransform(1,0,0,1,0,0);ctx.drawImage(cache,0,0);ctx.setTransform(dpr,0,0,dpr,0,0);drew=false}
  else{drawBase();
   if(still&&key===pKey){if(cache.width!==cv.width||cache.height!==cv.height){cache.width=cv.width;cache.height=cv.height}
@@ -114,10 +121,10 @@ export function draw(busy){const t0=performance.now();ctx.setTransform(dpr,0,0,d
  drawMarks();
  for(const f of F){
   if(f.gs&&f.gs.length>1){const lp=[];   // one clock per zone region, with its UTC offset
-   for(const g of f.gs){if(!g.parts.length)continue;const p0=g.parts.reduce((a,b)=>b.a>a.a?b:a),p=label(p0.c,p0.a,g.t,fo(g.off));if(p)lp.push(p)}
+   for(const g of f.gs){if(!g.parts.length)continue;const p0=g.parts.reduce((a,b)=>b.a>a.a?b:a),p=label(p0.c,p0.a,g.t,fo(g.off),badge(g));if(p)lp.push(p)}
    const q=f.a*k*k>3600&&d3.geoDistance(ctr,f.c)<=1.25&&proj(f.c);   // country name only where it clears the clocks
    if(q&&lp.every(p=>Math.hypot(p[0]-q[0],p[1]-q[1])>48))label(f.c,f.a,'',f.properties.n);continue}
-  if(!f.tz){label(f.c,f.a,'',f.properties.n);continue}label(f.c,f.a,f.t,f.properties.n)}   // no official time: just the name
+  if(!f.tz){label(f.c,f.a,'',f.properties.n);continue}label(f.c,f.a,f.t,f.properties.n,badge(f))}   // no official time: just the name
  for(const fn of overlays)fn();if(detOn&&drew)dcost=dcost*.8+(performance.now()-t0)*.2}   // blit-only frames say nothing about the cost of drawing
 // ---- hit-testing: sets the highlighted country (hov) and, for multi-zone countries, the highlighted zone group (hgk)
 function pickAt(x,y){if(Math.hypot(x-W/2,y-H/2)>k)return null;const ll=proj.invert([x,y]);return ll?F.find(f=>inF(f,ll))||null:null}

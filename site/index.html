@@ -7,8 +7,8 @@
 </head><body>
 <header><h1>World Time Globe</h1><span id="utc"></span></header>
 <div id="wrap"><canvas id="g"></canvas><div id="tip"></div>
-<div id="sb"><input id="q" type="search" placeholder="Search a city or country" autocomplete="off" spellcheck="false" aria-label="Search a city or country" role="combobox" aria-expanded="false" aria-controls="res"><ul id="res" role="listbox"></ul><div id="found" aria-live="polite"></div></div></div>
-<div id="bar"><button id="brot">Pause rotation</button><button id="bfmt">Use 12-hour</button><button id="bzi" aria-label="Zoom in">+</button><button id="bzo" aria-label="Zoom out">−</button></div>
+<div id="sb"><input id="q" type="search" placeholder="Search a city or country" autocomplete="off" spellcheck="false" aria-label="Search a city or country" role="combobox" aria-expanded="false" aria-controls="res"><ul id="res" role="listbox"></ul><div id="found" aria-live="polite"></div></div><div id="cl" hidden></div></div>
+<div id="bar"><button id="brot">Pause rotation</button><button id="bfmt">Use 12-hour</button><button id="bchg" aria-pressed="false">Show clock changes</button><button id="bzi" aria-label="Zoom in">+</button><button id="bzo" aria-label="Zoom out">−</button></div>
 <div id="leg"><div id="lb"></div><div id="lt"><span>UTC−12</span><span>−6</span><span>0</span><span>+6</span><span>+12</span></div></div>
 <noscript>This page needs JavaScript to draw the globe.</noscript>
 <script src="d3.min.js"></script>
