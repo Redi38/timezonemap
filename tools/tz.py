@@ -7,6 +7,7 @@ Zones are IANA names ('Europe/Kyiv').  Antarctica has no official time, so its m
 whole-hour Etc/ zones; fixed_zone() builds those names from a UTC offset, because Etc/GMT+6 is
 UTC-6 and is easy to get backwards.
 """
+
 import datetime as dt
 import os
 import re
@@ -15,11 +16,11 @@ from collections import defaultdict
 
 import tzdata
 
-zoneinfo.reset_tzpath(to=[])          # use the tzdata package, not the OS copy
+zoneinfo.reset_tzpath(to=[])  # use the tzdata package, not the OS copy
 TZDIR = os.path.join(os.path.dirname(tzdata.__file__), 'zoneinfo')
 UTC = dt.timezone.utc
 
-MATCH_MIN = 0.90       # minimum offset-history similarity to call two zones the same
+MATCH_MIN = 0.90  # minimum offset-history similarity to call two zones the same
 
 
 # ---------------------------------------------------------------- names
@@ -43,6 +44,7 @@ HIST = [dt.datetime(y, m, 15, tzinfo=UTC) for y in range(1970, 2038) for m in ra
 FWD = [dt.datetime(y, m, d, tzinfo=UTC) for y in range(2026, 2038) for m in range(1, 13) for d in (1, 15)]
 _sig = {}
 
+
 def sig(name, samples=HIST):
     """The zone's UTC offset in seconds at each sample time."""
     key = (name, id(samples))
@@ -51,18 +53,22 @@ def sig(name, samples=HIST):
         _sig[key] = tuple(int(d.astimezone(z).utcoffset().total_seconds()) for d in samples)
     return _sig[key]
 
+
 def behaviour(name):
     """Zones with equal behaviour keys keep the same offsets from now on (2026-2037)."""
     return sig(name, FWD)
+
 
 def offset_hours(name):
     """The zone's current UTC offset in hours."""
     return sig(name, FWD)[0] / 3600
 
+
 def similarity(a, b):
     """Share of 1970-2037 months in which two zones had the same offset."""
     sa, sb = sig(a), sig(b)
     return sum(x == y for x, y in zip(sa, sb)) / len(sa)
+
 
 def best_match(name, candidates):
     """(candidate, similarity) of the candidate that behaves most like `name`; an identical name wins ties."""
@@ -81,8 +87,9 @@ def parse_coord(s):
     lo = int(m[6]) + int(m[7]) / 60 + int(m[8] or 0) / 3600
     return (-lo if m[5] == '-' else lo, -la if m[1] == '-' else la)
 
+
 def read_zone_tab():
-    out = defaultdict(list)       # cc -> [(name, (lon, lat), comment)]
+    out = defaultdict(list)  # cc -> [(name, (lon, lat), comment)]
     for line in open(os.path.join(TZDIR, 'zone.tab'), encoding='utf-8'):
         if line.startswith('#') or not line.strip():
             continue

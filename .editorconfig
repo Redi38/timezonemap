@@ -1,0 +1,31 @@
+# https://editorconfig.org
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+
+[*.py]
+indent_size = 4
+max_line_length = 150   # keep in step with line-length in pyproject.toml
+
+[*.{conf,yml,yaml}]
+indent_size = 4
+
+[*.json]
+indent_size = 2
+
+# The site files are hand-compacted (1-space indents in places), so no indent_size here.
+[site/**.{js,css,html}]
+indent_style = space
+
+# Generated or vendored: leave untouched.
+[site/{d3.min.js,countries.js,cities.*.json,detail-*.json}]
+charset = unset
+end_of_line = unset
+insert_final_newline = unset
+trim_trailing_whitespace = unset
+indent_style = unset

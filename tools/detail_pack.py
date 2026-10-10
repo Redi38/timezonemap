@@ -22,6 +22,7 @@ Integer deltas are small numbers that compress very well; site/js/detail.js turn
 [lon, lat] pairs.  The grid is far finer than a pixel at the highest zoom (0.002 degrees is about
 0.2 px at 12x), and neighbours that share a border quantize it identically.
 """
+
 import math
 
 from shapely.geometry import Polygon
@@ -30,7 +31,7 @@ LEVELS = [
     {'file': 'detail-1.json', 'q': 250, 'tol': 0.03},
     {'file': 'detail-2.json', 'q': 500, 'tol': 0},
 ]
-DENSIFY_STEP = 0.25     # degrees; the same step build_zones.py uses, so long edges stay straight in lon/lat
+DENSIFY_STEP = 0.25  # degrees; the same step build_zones.py uses, so long edges stay straight in lon/lat
 
 
 def twice_area(pts):
@@ -92,13 +93,13 @@ def pack_polygons(polys, q, tol, caps, densify):
             r = quantize_ring(ring, q)
             if r is None:
                 if i == 0:
-                    rings = None            # the exterior vanished: so does the polygon
+                    rings = None  # the exterior vanished: so does the polygon
                     break
                 continue
             rings.append(r)
         if rings:
             kept.append([delta_encode(r) for r in rings])
-            shown.append([[[x / q, y / q] for x, y in r] + [[r[0][0] / q, r[0][1] / q]] for r in rings])   # as the page sees it
+            shown.append([[[x / q, y / q] for x, y in r] + [[r[0][0] / q, r[0][1] / q]] for r in rings])  # as the page sees it
     return kept, caps(shown)
 
 

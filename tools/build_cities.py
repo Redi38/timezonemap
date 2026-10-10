@@ -4,6 +4,7 @@
 Source: the geonamescache package (GeoNames).  Run: pip install geonamescache && python3 tools/build_cities.py
 Format: {"v":1,"k":{cc: country name},"c":[[name, cc, lat, lon, timezone, population, alt-name?], ...]} sorted by population.
 """
+
 import json, os, unicodedata
 import geonamescache
 from data_files import publish
@@ -11,13 +12,34 @@ from data_files import publish
 MIN_POP = 100_000
 
 # Older or Russian-style spellings people still type.
-ALIASES = {'Kyiv': 'Kiev', 'Kharkiv': 'Kharkov', 'Odesa': 'Odessa', 'Lviv': 'Lvov', 'Dnipro': 'Dnepropetrovsk', 'Mumbai': 'Bombay',
-           'Kolkata': 'Calcutta', 'Chennai': 'Madras', 'Beijing': 'Peking', 'Ho Chi Minh City': 'Saigon', 'Yangon': 'Rangoon',
-           'Istanbul': 'Constantinople', 'Kraków': 'Cracow', 'Gdańsk': 'Danzig', 'Wrocław': 'Breslau', 'Chişinău': 'Kishinev',
-           'Minsk': 'Mensk', 'Nur-Sultan': 'Astana', 'Astana': 'Nur-Sultan', 'Bengaluru': 'Bangalore', 'Thiruvananthapuram': 'Trivandrum'}
+ALIASES = {
+    'Kyiv': 'Kiev',
+    'Kharkiv': 'Kharkov',
+    'Odesa': 'Odessa',
+    'Lviv': 'Lvov',
+    'Dnipro': 'Dnepropetrovsk',
+    'Mumbai': 'Bombay',
+    'Kolkata': 'Calcutta',
+    'Chennai': 'Madras',
+    'Beijing': 'Peking',
+    'Ho Chi Minh City': 'Saigon',
+    'Yangon': 'Rangoon',
+    'Istanbul': 'Constantinople',
+    'Kraków': 'Cracow',
+    'Gdańsk': 'Danzig',
+    'Wrocław': 'Breslau',
+    'Chişinău': 'Kishinev',
+    'Minsk': 'Mensk',
+    'Nur-Sultan': 'Astana',
+    'Astana': 'Nur-Sultan',
+    'Bengaluru': 'Bangalore',
+    'Thiruvananthapuram': 'Trivandrum',
+}
+
 
 def ascii_(s):
     return unicodedata.normalize('NFKD', s).encode('ascii', 'ignore').decode()
+
 
 def main():
     gc = geonamescache.GeonamesCache()
@@ -29,7 +51,7 @@ def main():
             continue
         name = c['name']
         alt = ''
-        if ascii_(name) != name:                    # keep one plain-ASCII spelling for people without accents on the keyboard
+        if ascii_(name) != name:  # keep one plain-ASCII spelling for people without accents on the keyboard
             alt = ascii_(name)
         alt = alt or ALIASES.get(name, '')
         row = [name, c['countrycode'], round(c['latitude'], 3), round(c['longitude'], 3), c['timezone'], c['population']]
@@ -43,6 +65,7 @@ def main():
     text = '{"v":1,"k":' + dump(k) + ',"c":[\n' + ',\n'.join(dump(r) for r in rows) + '\n]}\n'
     name = publish('cities.json', text)
     print(len(rows), 'cities,', len(text) // 1024, 'KiB ->', name)
+
 
 if __name__ == '__main__':
     main()

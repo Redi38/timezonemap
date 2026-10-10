@@ -1,0 +1,12 @@
+# Formatter for the Python build tools in tools/.  Run from the repo root:
+#   pip install ruff
+#   ruff format tools          # rewrite files
+#   ruff format --check tools  # only report (what CI would run)
+[tool.ruff]
+line-length = 150
+target-version = "py310"
+extend-exclude = ["tools/.cache"]
+
+[tool.ruff.format]
+quote-style = "preserve"   # the tools mix ' and " on purpose; do not churn quotes
+indent-style = "space"

@@ -34,6 +34,7 @@ zone.tab while the page uses zone1970.tab names, so zones are matched by compari
 their UTC-offset history from 1970 to 2037.
 The matching, zone.tab reading and zone naming are in tools/tz.py.
 """
+
 import gzip
 import json
 import math
@@ -52,19 +53,19 @@ from detail_pack import LEVELS, pack_level
 from data_files import publish
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-COUNTRIES = os.path.join(HERE, '..', 'site', 'countries.js')   # 'const DATA={...};' read by the page
+COUNTRIES = os.path.join(HERE, '..', 'site', 'countries.js')  # 'const DATA={...};' read by the page
 CHECK = '--check' in sys.argv
 DETAIL = '--detail' in sys.argv
 SITE = os.path.join(HERE, '..', 'site')
 NE_FILE = os.path.join(HERE, '.cache', 'ne_10m_admin_0_countries.geojson')
 NE_URL = 'https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_admin_0_countries.geojson'
-BORDER_1899_LAT = 22   # degrees north; Egypt-Sudan border of the 1899 Condominium agreement
-DET_TOL = 0.006        # degrees (~600 m); detail outlines are simplified by this much
+BORDER_1899_LAT = 22  # degrees north; Egypt-Sudan border of the 1899 Condominium agreement
+DET_TOL = 0.006  # degrees (~600 m); detail outlines are simplified by this much
 
 SIMPLIFY = (0.04, 0.15)  # degrees; zone borders are simplified more in bigger countries
-REACH = 0.7            # degrees the regions extend past the country outline
-MIN_AREA = 1e-4        # deg^2; smaller pieces are dropped (scaled down for tiny islands)
-DIGITS = 2             # decimals kept in output coordinates
+REACH = 0.7  # degrees the regions extend past the country outline
+MIN_AREA = 1e-4  # deg^2; smaller pieces are dropped (scaled down for tiny islands)
+DIGITS = 2  # decimals kept in output coordinates
 if DETAIL:
     SIMPLIFY, REACH, MIN_AREA, DIGITS = (0.006, 0.03), 0.12, 2e-5, 3
 
@@ -72,9 +73,11 @@ if DETAIL:
 # keyed by the feature name used in site/countries.js.  See the "_about" notes in that file.
 SETTINGS_FILE = os.path.join(HERE, 'zone_settings.json')
 
+
 def load_settings(path=SETTINGS_FILE):
     with open(path, encoding='utf-8') as fh:
         return json.load(fh)['countries']
+
 
 SETTINGS = load_settings()
 
@@ -82,12 +85,15 @@ SETTINGS = load_settings()
 # ---------------------------------------------------------------- geometry helpers
 min_area = MIN_AREA
 
+
 def ring_area(r):
     return sum(r[i][0] * r[i + 1][1] - r[i + 1][0] * r[i][1] for i in range(len(r) - 1)) / 2
+
 
 def to_shapely(g):
     ps = [g['coordinates']] if g['type'] == 'Polygon' else g['coordinates']
     return shapely.make_valid(MultiPolygon([Polygon(p[0], p[1:]) for p in ps]))
+
 
 def polys(g):
     if g is None or g.is_empty:
@@ -98,12 +104,15 @@ def polys(g):
         return [p for x in g.geoms for p in polys(x)]
     return []
 
+
 def clean(g):
     g = shapely.make_valid(g) if not g.is_valid else g
     return unary_union([p for p in polys(g) if p.area >= min_area])
 
+
 def rnd(v):
     return round(v + 0.0, DIGITS)
+
 
 def densify(coords, step):
     """Insert points along every edge longer than `step` degrees, straight in lon/lat.
@@ -118,6 +127,7 @@ def densify(coords, step):
             out.append((a[0] + (b[0] - a[0]) * i / n, a[1] + (b[1] - a[1]) * i / n))
         out.append(b)
     return out
+
 
 def ring_out(r, clockwise, keep_pole=False):
     pts = []
@@ -142,6 +152,7 @@ def ring_out(r, clockwise, keep_pole=False):
             return None
     return pts
 
+
 def geom_out(g, cw_exterior, keep_pole=False):
     """Polygon list in the winding d3 expects: exterior clockwise, holes counter-clockwise."""
     out = []
@@ -153,6 +164,7 @@ def geom_out(g, cw_exterior, keep_pole=False):
         out.append([ext] + holes)
     return out
 
+
 def steradians(g):
     """Rough spherical area of a lon/lat shape."""
     a = 0.0
@@ -161,9 +173,11 @@ def steradians(g):
         a += p.area * (math.pi / 180) ** 2 * math.cos(math.radians(c.y))
     return a
 
+
 def simplify_for(area):
     lo, hi = SIMPLIFY
     return min(hi, max(lo, 0.012 * math.sqrt(area)))
+
 
 def cap_radius(c, g):
     """Radians from c to the farthest vertex of g."""
@@ -176,6 +190,7 @@ def cap_radius(c, g):
             r = max(r, 2 * math.asin(min(1.0, math.sqrt(h))))
     return r
 
+
 def caps(plist):
     """[lon, lat, radius] per polygon: a cap (radius in radians) that holds it, for culling in the page."""
     out = []
@@ -183,7 +198,7 @@ def caps(plist):
         ring = poly[0]
         xs, ys = [q[0] for q in ring], [q[1] for q in ring]
         c = ((min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2)
-        if max(xs) - min(xs) >= 359:             # a ring that runs round a pole: centre the cap on the pole
+        if max(xs) - min(xs) >= 359:  # a ring that runs round a pole: centre the cap on the pole
             c = (0.0, -90.0 if sum(ys) < 0 else 90.0)
         la0, lo0 = math.radians(c[1]), math.radians(c[0])
         r = 0.0
@@ -193,6 +208,7 @@ def caps(plist):
             r = max(r, 2 * math.asin(min(1.0, math.sqrt(h))))
         out.append([round(c[0], 2), round(c[1], 2), math.ceil((r + 0.0005) * 1000) / 1000])
     return out
+
 
 def label_point(g):
     big = max(polys(g), key=lambda p: p.area)
@@ -206,6 +222,7 @@ def ne_features():
     """The Natural Earth 10m country features (downloaded once into tools/.cache)."""
     if not os.path.exists(NE_FILE):
         import urllib.request
+
         os.makedirs(os.path.dirname(NE_FILE), exist_ok=True)
         print('downloading', NE_URL, file=sys.stderr)
         urllib.request.urlretrieve(NE_URL, NE_FILE)
@@ -214,17 +231,27 @@ def ne_features():
 
 # Antarctica has no official time.  The map shows the conventional zones by longitude (a wedge each, meeting at the
 # pole); research stations often keep their own time instead, which the page says in the tooltip.
-ANT_WEDGES = [      # (west lon, east lon, zone); fixed_zone(h) is the whole-hour zone for UTC+h
-    (-180, -150, 'Antarctica/McMurdo'), (-150, -90, fixed_zone(-6)), (-90, -67, fixed_zone(-4)),
-    (-67, -20, fixed_zone(-3)), (-20, 40, fixed_zone(0)), (40, 60, fixed_zone(3)), (60, 80, fixed_zone(5)),
-    (80, 100, fixed_zone(6)), (100, 115, fixed_zone(7)), (115, 135, fixed_zone(8)), (135, 165, fixed_zone(10)),
+ANT_WEDGES = [  # (west lon, east lon, zone); fixed_zone(h) is the whole-hour zone for UTC+h
+    (-180, -150, 'Antarctica/McMurdo'),
+    (-150, -90, fixed_zone(-6)),
+    (-90, -67, fixed_zone(-4)),
+    (-67, -20, fixed_zone(-3)),
+    (-20, 40, fixed_zone(0)),
+    (40, 60, fixed_zone(3)),
+    (60, 80, fixed_zone(5)),
+    (80, 100, fixed_zone(6)),
+    (100, 115, fixed_zone(7)),
+    (115, 135, fixed_zone(8)),
+    (135, 165, fixed_zone(10)),
     (165, 180, 'Antarctica/McMurdo'),
 ]
+
 
 def antarctica_geom():
     f = next(f for f in ne_features() if f['properties']['NAME_EN'] == 'Antarctica')
     g = shapely.make_valid(shape(f['geometry']))
     return g.simplify(0.006 if DETAIL else 0.15)
+
 
 def antarctica_parts(g, cw_exterior):
     """Zone wedges of the Antarctic land; same fields as the other countries' parts."""
@@ -243,16 +270,21 @@ def antarctica_parts(g, cw_exterior):
             out.append({'z': [z], 'g': gj, 'c': caps(gj)})
         else:
             c = label_point(u)
-            out.append({'z': [z], 'g': gj, 'c': c, 'a': float('%.3g' % steradians(u)),
-                        'r': math.ceil(cap_radius(c, u) * 100) / 100})
+            out.append({'z': [z], 'g': gj, 'c': c, 'a': float('%.3g' % steradians(u)), 'r': math.ceil(cap_radius(c, u) * 100) / 100})
     return out
+
 
 def antarctica_feature(cw_exterior):
     g = antarctica_geom()
     g = unary_union([p for p in polys(g) if p.area >= 0.05])
     parts = antarctica_parts(g, cw_exterior)
-    return {'type': 'Feature', 'properties': {'n': 'Antarctica', 'z': list(dict.fromkeys(z for p in parts for z in p['z']))},
-            'geometry': {'type': 'MultiPolygon', 'coordinates': geom_out(g, cw_exterior)}, 'parts': parts, 'marks': []}
+    return {
+        'type': 'Feature',
+        'properties': {'n': 'Antarctica', 'z': list(dict.fromkeys(z for p in parts for z in p['z']))},
+        'geometry': {'type': 'MultiPolygon', 'coordinates': geom_out(g, cw_exterior)},
+        'parts': parts,
+        'marks': [],
+    }
 
 
 def dumps_lines(head, items):
@@ -270,6 +302,7 @@ def load_ne(base):
     base: page feature name -> shapely geometry.
     """
     from shapely.strtree import STRtree
+
     names = list(base)
     tree = STRtree([base[n] for n in names])
     pieces = defaultdict(list)
@@ -300,7 +333,7 @@ def load_ne(base):
     out = {}
     for n, ps in pieces.items():
         g = unary_union(ps)
-        if n in touched:        # close the hairline gaps between pieces that came from different features
+        if n in touched:  # close the hairline gaps between pieces that came from different features
             g = g.buffer(0.003, join_style=2).buffer(-0.003, join_style=2)
         out[n] = g
     apply_1899_sudan_border(out)
@@ -322,6 +355,7 @@ def apply_1899_sudan_border(out):
 # build_country() runs these in order for one feature:
 #   find_zones -> clip_zones -> find_marks -> merge_zones -> claim_rest -> drop_nearby_marks -> output_parts
 
+
 class Context:
     """Things every country needs: the zone finder, zone.tab, the world box and the winding the page uses."""
 
@@ -342,12 +376,12 @@ class Context:
 
 class CountryResult:
     def __init__(self, used, dropped, weak, parts, marks, empty):
-        self.used = used            # page zone names that really exist in the country
-        self.dropped = dropped      # listed zones that got neither land nor a marker
-        self.weak = weak            # geometry zones skipped as a neighbour's
-        self.parts = parts          # output regions: [{z, g, ...}]
-        self.marks = marks          # {zone: {z, ll, n}}
-        self.empty = empty          # nothing at all was found
+        self.used = used  # page zone names that really exist in the country
+        self.dropped = dropped  # listed zones that got neither land nor a marker
+        self.weak = weak  # geometry zones skipped as a neighbour's
+        self.parts = parts  # output regions: [{z, g, ...}]
+        self.marks = marks  # {zone: {z, ll, n}}
+        self.empty = empty  # nothing at all was found
 
 
 def apply_zone_overrides(f, name, zones):
@@ -372,7 +406,9 @@ def probe_points(p):
     while y <= maxy:
         x = minx
         while x <= maxx:
-            xs.append(x); ys.append(y); x += step
+            xs.append(x)
+            ys.append(y)
+            x += step
         y += step
     if xs:
         pts += [(x, y) for x, y, ok in zip(xs, ys, shapely.contains_xy(p, xs, ys)) if ok]
@@ -398,7 +434,7 @@ def clip_zones(found, zones, E, tol, ctx):
             continue
         z, s = best_match(t, zones)
         if s < MATCH_MIN:
-            weak.append(t)          # a neighbour's zone overlapping the coarse outline
+            weak.append(t)  # a neighbour's zone overlapping the coarse outline
             continue
         by_z[z].append(piece)
     return by_z, weak
@@ -460,7 +496,7 @@ def grow_parts(parts, rest, tol):
         if claimed is not None:
             rest = clean(rest.difference(claimed))
         reach *= 2
-    for k in parts:                   # buffering leaves many small arcs; thin them out again
+    for k in parts:  # buffering leaves many small arcs; thin them out again
         parts[k] = clean(parts[k].simplify(tol * 0.5))
     return rest
 
@@ -510,8 +546,7 @@ def output_parts(parts, used, cls_of, C, cw_exterior):
             out.append({'z': zs, 'g': g, 'c': caps(g)})
         else:
             c = label_point(inside)
-            out.append({'z': zs, 'g': g, 'c': c, 'a': float('%.3g' % steradians(inside)),
-                        'r': math.ceil(cap_radius(c, parts[k]) * 100) / 100})
+            out.append({'z': zs, 'g': g, 'c': c, 'a': float('%.3g' % steradians(inside)), 'r': math.ceil(cap_radius(c, parts[k]) * 100) / 100})
     return out
 
 
@@ -527,7 +562,7 @@ def build_country(name, zones, raw, ctx):
 
     found = find_zones(C, ctx.tf)
     if island and found:
-        zones = sorted(found)       # else keep the inherited list; the nearest-offset fallback picks one
+        zones = sorted(found)  # else keep the inherited list; the nearest-offset fallback picks one
     by_z, weak = clip_zones(found, zones, E, tol, ctx)
     marks = find_marks(cfg, zones, by_z, ctx) if cfg.get('cc') and not island else {}
     cls, cls_of, parts, taken = merge_zones(zones, by_z)
@@ -624,14 +659,14 @@ def write_countries(src, m, data):
     new = dumps_lines('{"type":"FeatureCollection","features":[', [compact(f) for f in data['features']])
     print(f'DATA: {len(m.group(1))} -> {len(new)} chars', file=sys.stderr)
     if not CHECK:
-        open(COUNTRIES, 'w', encoding='utf-8').write(src[:m.start(1)] + new + src[m.end(1):])
+        open(COUNTRIES, 'w', encoding='utf-8').write(src[: m.start(1)] + new + src[m.end(1) :])
         print('wrote', os.path.normpath(COUNTRIES), file=sys.stderr)
 
 
 def main():
     src, m, data = read_countries()
     ctx = Context(page_winding(data))
-    if not DETAIL:      # rebuilt on every run so the outline always matches this script
+    if not DETAIL:  # rebuilt on every run so the outline always matches this script
         data['features'] = [f for f in data['features'] if f['properties']['n'] != 'Antarctica']
         data['features'].append(antarctica_feature(ctx.cw_exterior))
 

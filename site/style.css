@@ -63,3 +63,4 @@ button:focus-visible{outline:2px solid #4da3ff;outline-offset:2px}
 #ctl #leg{margin-bottom:6px}
 #cl{bottom:130px}
 @media (max-width:680px){#cmp{bottom:130px}}
+#nojs{position:absolute;inset:0;margin:auto;height:fit-content;max-width:420px;padding:0 24px;text-align:center;color:var(--mut);font-size:15px;line-height:1.5}#nojs b{color:var(--fg);font-size:17px}
