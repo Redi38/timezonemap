@@ -1,12 +1,11 @@
 // Clock changes: the "Show clock changes" button, which switches the layer view.js draws, and a list of the changes this
 // calendar month, grouped by date.  Countries with several zones are listed by zone when only some of them change.
 import {F,now} from './zones.js';
-import {dayStr,monthName,zoneListName} from './tz.js';
+import {dayStr,monthName,zoneListName,hm} from './tz.js';
 import {showChg,setShowChg} from './view.js';
 import {setAuto,flyTo} from './anim.js';
 const btn=document.getElementById('bchg'),box=document.getElementById('cl');
 const esc=t=>String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const hm=a=>{const h=Math.floor(a),m=Math.round((a-h)*60);return(h?h+' h':'')+(h&&m?' ':'')+(m?m+' min':'')};
 let shown=[],last='';
 // [{t, text, items:[{f, name}]}] in time order: one row per local date and size of the change
 function rows(){const m=new Map();

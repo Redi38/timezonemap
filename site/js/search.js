@@ -7,17 +7,23 @@ import {DATA} from './data-files.js';
 const qEl=document.getElementById('q'),resEl=document.getElementById('res'),foundEl=document.getElementById('found');
 const nrm=t=>t.normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/[^a-z0-9 ,'-]/g,' ').replace(/\s+/g,' ').trim();
 const CALIAS={usa:'United States of America',us:'United States of America','united states':'United States of America',america:'United States of America',uk:'United Kingdom',britain:'United Kingdom',england:'United Kingdom',china:"People's Republic of China",czechia:'Czech Republic',burma:'Myanmar','cote d\'ivoire':'Ivory Coast',holland:'Netherlands',russia:'Russia'};
-let cities=null,cityTried=false,cIdx=[],items=[],cur=-1,sel=null;
+let cities=null,cityTried=false,cIdx=[],items=[],cur=-1,sel=null;const cbs=[];
 const cntIdx=F.map(f=>({kind:'country',n:f.properties.n,f,key:nrm(f.properties.n)}));
-function loadCities(){if(cityTried)return;cityTried=true;fetch(DATA['cities.json']).then(r=>{if(!r.ok)throw 0;return r.json()}).then(d=>{
+export function loadCities(){if(cityTried)return;cityTried=true;fetch(DATA['cities.json']).then(r=>{if(!r.ok)throw 0;return r.json()}).then(d=>{
  cities=d;cIdx=d.c.map(r=>({kind:'city',n:r[0],cc:r[1],cn:d.k[r[1]]||r[1],ll:[r[3],r[2]],tz:r[4],pop:r[5],key:nrm(r[0]),alt:r[6]?nrm(r[6]):'',ckey:nrm(d.k[r[1]]||'')}));
- if(qEl.value)search()}).catch(()=>{cityTried=false;cities=null})}
+ if(qEl.value)search();cbs.forEach(f=>f())}).catch(()=>{cityTried=false;cities=null})}
+// For other panels: run f once the city list has loaded, and look cities up with the search box's rules ('paris, france' works).
+// findCities gives null while the list is still loading.
+export const onCities=f=>{cbs.push(f)};
+export function findCities(text,n=6){if(!cities)return null;let q=nrm(text),cq='';if(q.includes(',')){[q,cq]=q.split(',').map(x=>x.trim())}
+ if(!q)return[];const out=[];cityHits(q,cq,out);out.sort((a,b)=>a[0]-b[0]);return out.slice(0,n).map(x=>x[1])}
+function cityHits(q,cq,out){for(const c of cIdx){if(cq&&!c.ckey.includes(cq))continue;const sc=Math.min(score(c.key,q),c.alt?score(c.alt,q):9);if(sc<9)out.push([sc*2+1-Math.min(.9,Math.log10(c.pop+1)/8),c]);if(out.length>400)break}}
 function score(key,q){return key===q?0:key.startsWith(q)?1:key.includes(' '+q)?2:key.includes(q)?3:9}
 function search(){let q=nrm(qEl.value),cq='';if(q.includes(',')){[q,cq]=q.split(',').map(x=>x.trim())}
  if(!q){close();return}
  const out=[],al=CALIAS[q];
  if(!cq)for(const c of cntIdx){const sc=Math.min(score(c.key,q),al&&c.n===al?0:9);if(sc<9)out.push([sc*2+.5,c])}
- for(const c of cIdx){if(cq&&!c.ckey.includes(cq))continue;const sc=Math.min(score(c.key,q),c.alt?score(c.alt,q):9);if(sc<9)out.push([sc*2+1-Math.min(.9,Math.log10(c.pop+1)/8),c]);if(out.length>400)break}
+ cityHits(q,cq,out);
  out.sort((a,b)=>a[0]-b[0]);items=out.slice(0,8).map(x=>x[1]);cur=items.length?0:-1;
  resEl.innerHTML=items.length?items.map((c,i)=>`<li role="option" data-i="${i}" aria-selected="${i===0}"><span>${esc(c.n)}</span><span class="m">${c.kind==='city'?esc(c.cn):'country'}</span></li>`).join(''):
   `<li class="m">${cities||cityTried&&!cities?'No match':'Loading cities…'}</li>`;

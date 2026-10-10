@@ -54,7 +54,7 @@ export function monthChanges(tz,d){const key=tz+'|'+d.getFullYear()+'-'+d.getMon
   if(o!==po){let lo=pt,hi=t;while(hi-lo>6e4){const m=Math.floor((lo+hi)/2);if(offOf(tz,new Date(m))===po)lo=m;else hi=m}out.push({t:hi,from:po,to:o,tz})}
   pt=t;po=o;if(t>=b-1)break}
  return mcc[key]=out}
-const hm=a=>{const h=Math.floor(a),m=Math.round((a-h)*60);return(h?h+' h':'')+(h&&m?' ':'')+(m?m+' min':'')};
+export const hm=a=>{const h=Math.floor(a),m=Math.round((a-h)*60);return(h?h+' h':'')+(h&&m?' ':'')+(m?m+' min':'')};
 // 'Sun 25 Oct · back 1 h' (local date of the change) and the short form for map labels, '25 Oct −1 h'
 export const changeText=c=>`${dayStr(c.tz,new Date(c.t))} · ${c.to>c.from?'forward':'back'} ${hm(Math.abs(c.to-c.from))}`;
 export const changeBadge=c=>`${dateStr(c.tz,new Date(c.t))} ${c.to>c.from?'+':'−'}${hm(Math.abs(c.to-c.from))}`;
