@@ -55,3 +55,11 @@ button:focus-visible{outline:2px solid #4da3ff;outline-offset:2px}
 #ts input{flex:1;min-width:0;accent-color:#ffc233;cursor:pointer}#ts #tsl{flex:none;width:33ch;overflow:hidden;white-space:nowrap;text-align:right;font-variant-numeric:tabular-nums;color:var(--fg)}   /* fixed width: the text changes while dragging */
 #ts button{padding:2px 10px;font-size:12px}#ts button:disabled{opacity:.5;cursor:default}
 @media (max-width:520px){#ts{flex-wrap:wrap}#ts input{order:2}#ts #tsl{order:3;flex:1 0 100%;width:auto;text-align:center}}
+
+/* bottom controls float over the globe with no background of their own */
+#ctl{position:absolute;left:0;right:0;bottom:0;z-index:3;background:none;pointer-events:none;padding-bottom:4px;text-shadow:0 1px 3px #000a,0 0 2px #000a}
+#ctl #bar,#ctl #ts,#ctl #leg{pointer-events:none}
+#ctl button,#ctl input,#ctl label,#ctl #lb{pointer-events:auto}
+#ctl #leg{margin-bottom:6px}
+#cl{bottom:130px}
+@media (max-width:680px){#cmp{bottom:130px}}
