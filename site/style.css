@@ -51,3 +51,7 @@ button:focus-visible{outline:2px solid #4da3ff;outline-offset:2px}
 #cmp .t{font-size:20px;font-weight:650;font-variant-numeric:tabular-nums}
 #cmp .note{margin-top:8px;padding-top:8px;border-top:1px solid var(--line);font-size:12px;line-height:1.5}
 @media (max-width:680px){#cmp{top:auto;bottom:10px;left:14px;right:14px;width:auto}#cmp .out{max-height:34vh;overflow:auto}#cmp:not([hidden])~#cl{display:none}}
+#ts{display:flex;align-items:center;gap:10px;width:min(560px,90%);margin:0 auto 8px;font-size:12px;color:var(--mut)}
+#ts input{flex:1;min-width:0;accent-color:#ffc233;cursor:pointer}#ts #tsl{flex:none;width:33ch;overflow:hidden;white-space:nowrap;text-align:right;font-variant-numeric:tabular-nums;color:var(--fg)}   /* fixed width: the text changes while dragging */
+#ts button{padding:2px 10px;font-size:12px}#ts button:disabled{opacity:.5;cursor:default}
+@media (max-width:520px){#ts{flex-wrap:wrap}#ts input{order:2}#ts #tsl{order:3;flex:1 0 100%;width:auto;text-align:center}}

@@ -1,7 +1,7 @@
 // Projection and drawing: the orthographic globe, camera (rotation and zoom), detailed outlines, hit-testing and the frame renderer.
 // Owns the camera and the highlighted country; other modules read them through the exports and change them through the functions.
 import {F,col,gcol,refresh,zver} from './zones.js';
-import {fo,changeBadge} from './tz.js';
+import {fo,changeBadge,nowDate} from './tz.js';
 import {fetchDetail} from './detail.js';
 import {DATA} from './data-files.js';
 export const cv=document.getElementById('g'),ctx=cv.getContext('2d'),wrap=document.getElementById('wrap');
@@ -18,7 +18,19 @@ export function spin(dlon){rot[0]+=dlon}
 export function pan(dx,dy){lastMove=performance.now();rot[0]+=dx*57.3/k;rot[1]=Math.max(-90,Math.min(90,rot[1]-dy*57.3/k))}
 export const zoom=m=>{lastMove=performance.now();k=Math.max(k0*.6,Math.min(k0*12,k*m))};
 export const zoomedIn=()=>k>k0*DZ_LOAD;
-function sun(){const d=new Date(),doy=(d-Date.UTC(d.getUTCFullYear(),0,0))/864e5,dec=-23.44*Math.cos(2*Math.PI/365*(doy+10)),h=d.getUTCHours()+d.getUTCMinutes()/60+d.getUTCSeconds()/3600;return[(12-h)*15,dec]}
+// Where the sun is straight overhead at moment d: [longitude, latitude] in degrees (low-precision solar coordinates, ~0.01 degrees).
+export function sunPoint(d){const R=Math.PI/180,n=d/864e5+2440587.5-2451545,   // days since J2000
+ L=280.46+.9856474*n,g=(357.528+.9856003*n)*R,lam=(L+1.915*Math.sin(g)+.02*Math.sin(2*g))*R,eps=(23.439-4e-7*n)*R,   // mean longitude, mean anomaly, ecliptic longitude, obliquity
+ ra=Math.atan2(Math.cos(eps)*Math.sin(lam),Math.cos(lam))/R,dec=Math.asin(Math.sin(eps)*Math.sin(lam))/R,gmst=280.46061837+360.98564736629*n;
+ return[(((ra-gmst)%360)+540)%360-180,dec]}
+// Day and night: the sun is below the horizon on the shaded side.  Civil, nautical and astronomical twilight (solar zenith angle 96, 102
+// and 108 degrees) are three softer steps beyond the terminator (90 degrees); a glow marks the point under the sun.
+const NIGHT=[[90,.18],[96,.12],[102,.12],[108,.12]];
+function drawNight(){const s=sunPoint(nowDate()),c=[s[0]+180,-s[1]];
+ for(const [r,a] of NIGHT){ctx.beginPath();path(d3.geoCircle().center(c).radius(r)());ctx.fillStyle=`rgba(2,6,20,${a})`;ctx.fill()}
+ if(d3.geoDistance(ctr,s)>1.5)return;const p=proj(s);if(!p)return;
+ const g=ctx.createRadialGradient(p[0],p[1],0,p[0],p[1],18);g.addColorStop(0,'rgba(255,236,140,.95)');g.addColorStop(1,'rgba(255,236,140,0)');
+ ctx.beginPath();ctx.arc(p[0],p[1],18,0,6.2832);ctx.fillStyle=g;ctx.fill();ctx.beginPath();ctx.arc(p[0],p[1],4,0,6.2832);ctx.fillStyle='#fff6c2';ctx.fill()}
 let vr=1.62,det=null,detOn=false,detLevel=-1;const detTried=[];
 // Zoomed in, the page swaps the coarse outlines for detail-1.json (Natural Earth 10m simplified, zone regions rebuilt to match),
 // and past DZ_FINE for the full detail-2.json.  Each file is fetched once the globe is zoomed past its threshold, so a
@@ -114,7 +126,7 @@ export function draw(busy){const t0=performance.now();ctx.setTransform(dpr,0,0,d
    cctx.clearRect(0,0,cache.width,cache.height);cctx.drawImage(cv,0,0);cKey=key}}
  pKey=key;
  if(!inl&&hov)paintHover();
- const s=sun();ctx.beginPath();path(d3.geoCircle().center([s[0]+180,-s[1]]).radius(90)());ctx.fillStyle='rgba(2,6,20,.45)';ctx.fill();
+ drawNight();
  if(hov){ctx.beginPath();pathF(hov);ctx.strokeStyle='#fff';ctx.lineWidth=1.6;ctx.stroke()}
  ctx.beginPath();ctx.arc(W/2,H/2,k,0,6.2832);ctx.strokeStyle='rgba(140,190,255,.4)';ctx.lineWidth=1.5;ctx.stroke();
  ctx.textAlign='center';ctx.textBaseline='middle';ctx.lineJoin='round';

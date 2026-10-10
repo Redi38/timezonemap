@@ -27,4 +27,5 @@ function toggle(v){setShowChg(v);btn.setAttribute('aria-pressed',v);btn.textCont
 export function init(){btn.onclick=()=>toggle(!showChg);
  box.addEventListener('click',e=>{if(e.target.closest('.h button'))return toggle(false);const a=e.target.closest('a[data-i]');if(a)go(shown[+a.dataset.i])});
  box.addEventListener('keydown',e=>{if(e.key==='Enter'){const a=e.target.closest('a[data-i]');if(a)go(shown[+a.dataset.i])}});
+ document.addEventListener('timechange',()=>{if(showChg)render()});   // the time slider moved
  setInterval(()=>{if(showChg)render()},30000)}

@@ -1,6 +1,6 @@
 // Search: finds a city (cities.json, fetched on first use) or a country, flies the globe to it and marks it. Owns `sel`.
 import {F} from './zones.js';
-import {offOf,fo,clock,zoneName} from './tz.js';
+import {offOf,fo,clock,zoneName,nowDate} from './tz.js';
 import {ctx,proj,ctr,k,k0,vis,pathF,inF} from './view.js';
 import {setAuto,flyTo,cancelFly} from './anim.js';
 import {DATA} from './data-files.js';
@@ -37,7 +37,7 @@ function choose(it){if(!it)return;close();qEl.value=it.n;qEl.blur();
  else{ll=it.f.c;z=Math.max(1,Math.min(7,.62/Math.sin(Math.min(1.3,it.f.br||.3))))}
  sel=it;setAuto(false);flyTo(ll,z);
  foundEl.style.display='block';card()}
-function card(){if(!sel)return;const it=sel,t=Date.now();let h;
+function card(){if(!sel)return;const it=sel,t=nowDate().getTime();let h;
  const co=(l)=>`${Math.abs(l[1]).toFixed(2)}°${l[1]<0?'S':'N'}, ${Math.abs(l[0]).toFixed(2)}°${l[0]<0?'W':'E'}`;
  if(it.kind==='city'){const d=new Date(t),o=offOf(it.tz,d),tm=clock(it.tz,d,true);
   h=`<b>${esc(it.n)}</b>, ${esc(it.cn)}<div class="m">${co(it.ll)}${it.f&&it.f.properties.n!==it.cn?' · in '+esc(it.f.properties.n):''}</div><div class="t">${tm} <span class="m">${fo(o)}</span></div><div class="m">${esc(zoneName(it.tz))}</div>`}

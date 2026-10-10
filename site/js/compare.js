@@ -1,6 +1,6 @@
 // Compare cities: pick two cities (same lookup as the search box), see the time difference now, when daylight saving
 // next changes that difference, and both cities on the globe joined by a great-circle arc.
-import {offOf,fo,clock,zoneName,dayStr,hm} from './tz.js';
+import {offOf,fo,clock,zoneName,dayStr,hm,nowDate} from './tz.js';
 import {ctx,proj,ctr,path,k,k0} from './view.js';
 import {setAuto,flyTo} from './anim.js';
 import {findCities,loadCities,onCities} from './search.js';
@@ -19,7 +19,7 @@ function nextChange(a,b,d){const key=a.tz+'|'+b.tz+'|'+Math.floor(d.getTime()/DA
  return nc[key]=r}
 // Everything the panel says about two cities at moment d.
 export function info(a,b,d){const oa=offOf(a.tz,d),ob=offOf(b.tz,d);return{oa,ob,diff:ob-oa,days:dayIdx(b,d)-dayIdx(a,d),change:nextChange(a,b,d)}}
-function render(){if(!open)return;const d=new Date(),[a,b]=pick;let h='';
+function render(){if(!open)return;const d=nowDate(),[a,b]=pick;let h='';
  const row=(c,i,rel)=>{const o=offOf(c.tz,d);return`<div class="r"><i style="background:${COL[i]}"></i><div class="n"><b>${esc(c.n)}</b>, ${esc(c.cn)}<div class="m">${fo(o)} · ${esc(zoneName(c.tz))}</div></div><div class="tm"><span class="t">${clock(c.tz,d,true)}</span><div class="m">${dayStr(c.tz,d)}${rel}</div></div></div>`};
  if(a&&b){const x=info(a,b,d),nm=(c,o)=>esc(c.n===o.n?`${c.n} (${c.cn})`:c.n);
   h=`<div class="head"><b>${nm(b,a)}</b> is ${x.diff===0?'on <b>the same time</b> as':`<b>${ahead(x.diff)}</b>`} <b>${nm(a,b)}</b></div>`+row(a,0,'')+row(b,1,x.days>0?' · next day':x.days<0?' · previous day':'');

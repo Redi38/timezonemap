@@ -28,10 +28,16 @@ export function nearestZone(zs,lon,d){let b=null,bd=1e9;for(const z of zs){const
 
 // ---- daylight saving
 const MOROCCO=['Africa/Casablanca','Africa/El_Aaiun'],dstc={};
+// ---- the page's clock: real time plus the time slider's shift (ms).  Everything that shows "now" reads it from here, so the
+// zone colours, clocks, tooltips, panels and the day/night shading all move together.
+let shift=0;
+export const getShift=()=>shift;
+export const nowDate=()=>new Date(Date.now()+shift);
+export function setShift(ms){shift=ms;for(const z in dstc)delete dstc[z]}   // the daylight-saving look-ahead starts from the clock
 function zname(tz,t){const n=new Intl.DateTimeFormat('en',{timeZone:tz,timeZoneName:'long'}).formatToParts(t).find(p=>p.type==='timeZoneName').value;return /^GMT/.test(n)?'':n}
 // Looks ~13 months ahead for clock changes. A zone observes DST when its offset moves both up and down in that window.
-export function dstInfo(tz){const c=dstc[tz];if(c&&Date.now()<c.exp)return c;
- const t0=Date.now(),DAY=864e5,tr=[];let pt=t0,po=offOf(tz,new Date(pt));
+export function dstInfo(tz){const c=dstc[tz],n=nowDate().getTime();if(c&&n<c.exp)return c;
+ const t0=n,DAY=864e5,tr=[];let pt=t0,po=offOf(tz,new Date(pt));
  for(let i=1;i<=58;i++){const t=t0+i*7*DAY,o=offOf(tz,new Date(t));
   if(o!==po){let a=pt,b=t;while(b-a>6e4){const m=Math.floor((a+b)/2);if(offOf(tz,new Date(m))===po)a=m;else b=m}tr.push({t:b,from:po,to:o})}
   pt=t;po=o}
