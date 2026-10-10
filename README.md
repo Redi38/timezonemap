@@ -3,7 +3,7 @@
 An interactive 3D globe that shows the current time in every country and time zone. Drag to rotate, zoom in to see
 zone borders inside big countries, and scrub a slider to see what the world looks like up to 24 hours from now.
 
-![World Time Globe](docs/screenshot.png)
+![World Time Globe](docs/screenshot.jpg)
 
 ## Features
 
@@ -19,7 +19,12 @@ zone borders inside big countries, and scrub a slider to see what the world look
 - **12 / 24-hour** display, pause/resume rotation, zoom buttons, touch support and light/dark themes.
 - A plain message is shown when JavaScript is turned off.
 
-## Run it
+## For developers
+
+Running it locally, rebuilding the data and the project layout are folded away below.
+
+<details>
+<summary><b>How to run it</b></summary>
 
 The site is static (vanilla JavaScript and [d3](https://d3js.org), no build step), but it uses ES modules, so it has to be
 served over HTTP; opening `index.html` from disk will not work.
@@ -32,7 +37,10 @@ python3 -m http.server 8000 --directory site      # http://localhost:8000
 docker compose up -d                              # http://localhost:8080
 ```
 
-## Project layout
+</details>
+
+<details>
+<summary><b>Project layout</b></summary>
 
 | Path | What it is |
 | --- | --- |
@@ -41,7 +49,10 @@ docker compose up -d                              # http://localhost:8080
 | `tools/` | Python scripts that generate that data |
 | `nginx/default.conf` | nginx config used by `docker-compose.yml` (gzip, cache headers) |
 
-## Rebuilding the data
+</details>
+
+<details>
+<summary><b>Rebuilding the data</b></summary>
 
 The generated files are committed, so you only need this to update the map or the city list.
 
@@ -56,7 +67,10 @@ python3 tools/build_cities.py            # city search list   -> site/cities.<ha
 Add `--check` to `build_zones.py` to report without writing. Per-country tweaks live in `tools/zone_settings.json`.
 Each script's docstring explains its inputs and output format.
 
-## Development
+</details>
+
+<details>
+<summary><b>Development</b></summary>
 
 ```sh
 pip install ruff
@@ -65,6 +79,8 @@ ruff format --check tools    # check only
 ```
 
 `.editorconfig` covers the basics (UTF-8, LF, final newline) for any editor that supports it.
+
+</details>
 
 ## Data and credits
 
