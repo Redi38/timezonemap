@@ -337,6 +337,7 @@ def load_ne(base):
             g = g.buffer(0.003, join_style=2).buffer(-0.003, join_style=2)
         out[n] = g
     apply_1899_sudan_border(out)
+    apply_page_western_sahara_border(out, base)
     return out
 
 
@@ -349,6 +350,26 @@ def apply_1899_sudan_border(out):
         both = unary_union([out['Egypt'], out['Sudan']])
         out['Egypt'] = both.intersection(box(-180, BORDER_1899_LAT, 180, 90))
         out['Sudan'] = both.intersection(box(-180, -90, 180, BORDER_1899_LAT))
+
+
+def apply_page_western_sahara_border(out, base):
+    """Morocco-Western Sahara border as the page's own (coarse) outlines draw it, so it does not move when you zoom in.
+
+    Natural Earth's Morocco is one polygon that also covers the Moroccan-administered part of Western Sahara, and its
+    Western Sahara is only the strip east of the berm.  The page's outlines use the UN border (a parallel at about 27.66N)
+    and give the whole territory to Western Sahara.  Without this step the detail layer swaps in the other border as soon as
+    the zoomed-in outlines load.  The two outlines are re-cut on the parallel the coarse ones share.
+    base: page feature name -> shapely geometry (the coarse outlines)."""
+    if not ({'Morocco', 'Western Sahara'} <= out.keys() and {'Morocco', 'Western Sahara'} <= base.keys()):
+        return
+    shared = base['Morocco'].intersection(base['Western Sahara'])  # the edge the two coarse outlines have in common
+    if shared.is_empty or shared.bounds[3] - shared.bounds[1] > 1e-6:
+        print('  Morocco / Western Sahara: no straight shared border in the page outlines, detail left as it is', file=sys.stderr)
+        return
+    lat = shared.bounds[1]
+    both = unary_union([out['Morocco'], out['Western Sahara']])
+    out['Morocco'] = both.intersection(box(-180, lat, 180, 90))
+    out['Western Sahara'] = both.intersection(box(-180, -90, 180, lat))
 
 
 # ---------------------------------------------------------------- per-country steps

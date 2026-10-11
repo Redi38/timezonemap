@@ -76,6 +76,8 @@ Each script's docstring explains its inputs and output format.
 pip install ruff
 ruff format tools            # format the Python tools (settings in pyproject.toml)
 ruff format --check tools    # check only
+
+node --test tests/*.test.mjs  # daylight-saving logic in site/js/tz.js (Node 18 or newer)
 ```
 
 `.editorconfig` covers the basics (UTF-8, LF, final newline) for any editor that supports it.

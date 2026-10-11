@@ -3,15 +3,17 @@ import {now,zoneGroups,gcol} from './zones.js';
 import {dstInfo,dayStr,clock,fo,zoneName,zoneListName,changeText} from './tz.js';
 import {W,H,hov,hgk,showChg} from './view.js';
 const tip=document.getElementById('tip');let tkey='';
+// A pause is a short drop in the offset that returns (Morocco in Ramadan); see dstInfo in tz.js.
+const pauseWhen=i=>i.ram?'during Ramadan':'for a short period';
 function dstHtml(f){const i=dstInfo(f.tz);
- if(i.special)return `<div class="d"><b>Observes daylight saving time</b><br>Morocco keeps ${fo(1)} most of the year and switches back to ${fo(0)} during Ramadan.</div>`;
+ if(i.special)return `<div class="d"><b>Observes daylight saving time</b><br>${f.properties.n} keeps ${fo(i.base)} most of the year and switches to ${fo(i.alt)} ${pauseWhen(i)}.<div class="m">Currently on ${Math.abs(f.off-i.base)<1e-6?'its usual':'the temporary'} time · clocks change ${i.next}</div></div>`;
  if(!i.dst)return `<div class="d m">No daylight saving time · ${fo(f.off)} all year.</div>`;
  const summer=Math.abs(f.off-i.sOff)<1e-6;
  return `<div class="d"><b>Observes daylight saving time</b><br>Summer (DST): ${fo(i.sOff)}${i.sName?' · '+i.sName:''}<br>Winter: ${fo(i.wOff)}${i.wName?' · '+i.wName:''}<div class="m">Currently on ${summer?'daylight saving':'standard'} time · clocks change ${i.next}</div></div>`}
 // The clock-change layer's line: what changes this month, with the offsets before and after.
 const chgHtml=(chg,cls)=>chg?`<div class="${cls}"><b class="cg">Clocks change this month</b><br>${chg.map(c=>`${changeText(c)} · ${fo(c.from)} → ${fo(c.to)}`).join('<br>')}</div>`:'';
 function rowHtml(g,date,on){const i=g.i,t=clock(g.tz,now,true),names=zoneListName(g.zs),
- dst=i.special?`DST: ${fo(1)}, ${fo(0)} during Ramadan`:i.dst?`DST: summer ${fo(i.sOff)} · winter ${fo(i.wOff)} · clocks change ${i.next}`:'No daylight saving time';
+ dst=i.special?`DST: ${fo(i.base)}, ${fo(i.alt)} ${pauseWhen(i)} · clocks change ${i.next}`:i.dst?`DST: summer ${fo(i.sOff)} · winter ${fo(i.wOff)} · clocks change ${i.next}`:'No daylight saving time';
  return `<div class="r${on?' on':''}"><i class="sw" style="background:${gcol(g)}"></i><span class="t2">${t}</span> ${fo(g.off)}${date?' · '+date:''}<div class="m">${names}<br>${dst}</div>${showChg?chgHtml(g.chg,'m'):''}</div>`}
 // mouse: [x,y] in canvas pixels or null; dragging: the tooltip is hidden while the globe is being dragged
 export function tipUpdate(mouse,dragging){if(!hov||!mouse||dragging){tip.style.display='none';tkey='';return}
