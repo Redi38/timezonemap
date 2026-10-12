@@ -81,6 +81,17 @@ function drawMarks(){for(const f of F){if(!f.gs||f.gs.length<2)continue;
    ctx.beginPath();ctx.arc(p[0],p[1],on?6:4.5,0,6.2832);ctx.fillStyle=gcol(g,on);ctx.fill();ctx.lineWidth=1.6;ctx.strokeStyle='#fff';ctx.stroke();
    if(on||k>k0*1.7){ctx.font='650 12px system-ui,sans-serif';ctx.lineWidth=3;ctx.strokeStyle='rgba(5,10,20,.85)';ctx.fillStyle='#fff';ctx.strokeText(g.t,p[0],p[1]-12);ctx.fillText(g.t,p[0],p[1]-12);
     if(on||k>k0*3.5){ctx.font='10px system-ui,sans-serif';ctx.lineWidth=2.5;ctx.strokeText(m.n,p[0],p[1]+13);ctx.fillStyle='rgba(235,242,255,.85)';ctx.fillText(m.n,p[0],p[1]+13)}}}}}}
+// Territories too small to see (Gibraltar, Monaco, Macau, Nauru, ...) get a dot at their position once zoomed in.  A feature is a speck
+// while its outline is under SPECK_PX pixels in radius; the dot goes away by itself when zooming makes the outline big enough to see.
+// f.sp is the dot's screen position (null when none), which pick() uses for hit-testing.  Countries with several zones have their own markers.
+const SPECK_PX=4;
+function drawSpecks(){const near=k>k0*2.5;
+ for(const f of F){f.sp=null;if(!near||(f.gs&&f.gs.length>1)||f.br*k>=SPECK_PX||d3.geoDistance(ctr,f.c)>1.5)continue;
+  const p=f.sp=proj(f.c);if(!p)continue;const on=f===hov;
+  ctx.beginPath();ctx.arc(p[0],p[1],on?6:4.5,0,6.2832);ctx.fillStyle=col(f,on);ctx.fill();chgTint(!!f.chg);ctx.lineWidth=1.6;ctx.strokeStyle='#fff';ctx.stroke();
+  if(on||k>k0*6){ctx.font='650 12px system-ui,sans-serif';ctx.lineWidth=3;ctx.strokeStyle='rgba(5,10,20,.85)';ctx.fillStyle='#fff';
+   if(f.t){ctx.strokeText(f.t,p[0],p[1]-12);ctx.fillText(f.t,p[0],p[1]-12)}
+   ctx.font='10px system-ui,sans-serif';ctx.lineWidth=2.5;ctx.strokeText(f.properties.n,p[0],p[1]+13);ctx.fillStyle='rgba(235,242,255,.85)';ctx.fillText(f.properties.n,p[0],p[1]+13)}}}
 // Clock-change layer: what changes its clocks this month is tinted amber and outlined, everything else is dimmed.
 // Called right after a country (or zone group) was filled, while its path is still current.
 function chgTint(on){if(!showChg)return;const lw=ctx.lineWidth,ss=ctx.strokeStyle;ctx.fillStyle=on?'rgba(255,196,40,.45)':'rgba(5,10,22,.55)';ctx.fill();
@@ -130,7 +141,7 @@ export function draw(busy){const t0=performance.now();ctx.setTransform(dpr,0,0,d
  if(hov){ctx.beginPath();pathF(hov);ctx.strokeStyle='#fff';ctx.lineWidth=1.6;ctx.stroke()}
  ctx.beginPath();ctx.arc(W/2,H/2,k,0,6.2832);ctx.strokeStyle='rgba(140,190,255,.4)';ctx.lineWidth=1.5;ctx.stroke();
  ctx.textAlign='center';ctx.textBaseline='middle';ctx.lineJoin='round';
- drawMarks();
+ drawMarks();drawSpecks();
  for(const f of F){
   if(f.gs&&f.gs.length>1){const lp=[];   // one clock per zone region, with its UTC offset
    for(const g of f.gs){if(!g.parts.length)continue;const p0=g.parts.reduce((a,b)=>b.a>a.a?b:a),p=label(p0.c,p0.a,g.t,fo(g.off),badge(g));if(p)lp.push(p)}
@@ -143,6 +154,7 @@ function pickAt(x,y){if(Math.hypot(x-W/2,y-H/2)>k)return null;const ll=proj.inve
 export function pick(x,y){hov=null;hgk=null;
  for(const f of F){if(!f.gs||f.gs.length<2)continue;for(const g of f.gs){
   for(const m of g.marks)if(m.p&&Math.hypot(m.p[0]-x,m.p[1]-y)<10){hov=f;hgk=g.k;return}}}
+ for(const f of F)if(f.sp&&Math.hypot(f.sp[0]-x,f.sp[1]-y)<10){hov=f;return}   // a dot of a territory too small to see
  const f=pickAt(x,y);hov=f;if(!f||!f.gs||f.gs.length<2)return;
  const ll=proj.invert([x,y]);if(!ll)return;
  for(const g of f.gs){if(detOn&&g.dp.length?g.dp.some(dp=>dp.items.some(it=>hasIn(it,ll))):g.parts.some(p=>d3.geoContains(p.geo,ll))){hgk=g.k;return}}}
