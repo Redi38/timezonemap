@@ -57,7 +57,7 @@ docker compose up -d                              # http://localhost:8080
 The generated files are committed, so you only need this to update the map or the city list.
 
 ```sh
-pip install timezonefinder shapely tzdata geonamescache
+pip install timezonefinder "shapely>=2.1" tzdata geonamescache
 
 python3 tools/build_zones.py             # per-zone geometry -> site/countries.js
 python3 tools/build_zones.py --detail    # zoomed-in outlines -> site/detail-1/2.<hash>.json
@@ -78,6 +78,7 @@ ruff format tools            # format the Python tools (settings in pyproject.to
 ruff format --check tools    # check only
 
 node --test tests/*.test.mjs  # daylight-saving logic in site/js/tz.js (Node 18 or newer)
+python3 -m unittest discover tests  # borders in the zoomed-in data stay shared (about 30 s, needs shapely)
 ```
 
 `.editorconfig` covers the basics (UTF-8, LF, final newline) for any editor that supports it.

@@ -2,7 +2,7 @@
 
 There are two levels; the page fetches them as the globe is zoomed in:
 
-  detail-1.json  outlines simplified to 0.03 degrees, on a 1/250-degree grid            used from 3x zoom
+  detail-1.json  outlines simplified to 0.05 degrees (shared borders together), on a 1/250 grid   used from 3x zoom
   detail-2.json  the full outlines, on a 1/500-degree grid                                  fetched past 4x zoom
 
 so a visitor who only zooms in a little never downloads the fine one.  On disk each name carries a content hash
@@ -20,15 +20,19 @@ Format (TopoJSON-style quantization, without the shared arcs):
 
 Integer deltas are small numbers that compress very well; site/js/detail.js turns them back into
 [lon, lat] pairs.  The grid is far finer than a pixel at the highest zoom (0.002 degrees is about
-0.2 px at 12x), and neighbours that share a border quantize it identically.
+0.2 px at 12x), and neighbours that share a border quantize it identically.  At level 1 the country outlines are
+simplified together (see simplified_outlines), so a shared border is cut the same way on both sides.
 """
 
 import math
+import sys
 
+import numpy as np
+import shapely
 from shapely.geometry import Polygon
 
 LEVELS = [
-    {'file': 'detail-1.json', 'q': 250, 'tol': 0.03},
+    {'file': 'detail-1.json', 'q': 250, 'tol': 0.05},
     {'file': 'detail-2.json', 'q': 500, 'tol': 0},
 ]
 DENSIFY_STEP = 0.25  # degrees; the same step build_zones.py uses, so long edges stay straight in lon/lat
@@ -57,6 +61,44 @@ def simplify_polygon(poly, tol, densify):
             pts.reverse()
         out.append([list(c) for c in pts])
     # holes can be dropped by simplify (collapsed); the exterior is always kept
+    return out
+
+
+def simplified_outlines(detail, tol, densify):
+    """{name: [polygon, ...]} with every country outline simplified together by `tol` degrees.
+
+    Simplifying each polygon on its own moves a shared border differently on each side, which leaves slivers of sea (or
+    overlaps) of up to `tol` between neighbours.  shapely.coverage_simplify treats all outlines as one coverage and keeps a
+    border shared, so the two sides stay equal.  Its tolerance is not Douglas-Peucker's: 0.05 here gives a smaller file and
+    a closer coastline than the 0.03 that was used for one polygon at a time.  Polygons it cannot take (invalid ones, or a shapely older than 2.1) and
+    polygons of five points or fewer are handled as before: on their own, or left as they are.
+    The zone regions of countries with several zones ('p') are not part of this; the page clips them to the country outline."""
+    out = {name: list(e['g']) for name, e in detail.items()}
+    if not hasattr(shapely, 'coverage_simplify'):
+        print('  shapely has no coverage_simplify (2.1 or newer): borders are simplified one polygon at a time', file=sys.stderr)
+        return {name: [simplify_polygon(p, tol, densify) if len(p[0]) > 5 else p for p in polys] for name, polys in out.items()}
+    ids, geoms = [], []
+    for name, polys in out.items():
+        for i, poly in enumerate(polys):
+            g = Polygon(poly[0], poly[1:])
+            if len(poly[0]) > 5 and g.is_valid and not g.is_empty:
+                ids.append((name, i))
+                geoms.append(g)
+    cov = np.empty(len(geoms), dtype=object)
+    cov[:] = geoms
+    simple = shapely.coverage_simplify(cov, tol)
+    for (name, i), s in zip(ids, simple):
+        poly = out[name][i]
+        if s.is_empty or s.geom_type != 'Polygon' or len(s.interiors) != len(poly) - 1:
+            out[name][i] = simplify_polygon(poly, tol, densify)
+            continue
+        rings = []
+        for new, old in zip([s.exterior] + list(s.interiors), poly):
+            pts = densify([tuple(c) for c in new.coords], DENSIFY_STEP)
+            if twice_area(pts[:-1]) * twice_area([tuple(c) for c in old[:-1]]) < 0:
+                pts.reverse()
+            rings.append([list(c) for c in pts])
+        out[name][i] = rings
     return out
 
 
@@ -107,9 +149,10 @@ def pack_level(detail, level, caps, densify):
     """The packed features of one level.  A country whose outline would vanish is left out (the page keeps its
     coarse outline); returns (features, names of the countries left out)."""
     q, tol = level['q'], level['tol']
+    outlines = simplified_outlines(detail, tol, densify) if tol else {name: e['g'] for name, e in detail.items()}
     feats, lost = {}, []
     for name, e in detail.items():
-        g, c = pack_polygons(e['g'], q, tol, caps, densify)
+        g, c = pack_polygons(outlines[name], q, 0, caps, densify)
         if not g:
             lost.append(name)
             continue
