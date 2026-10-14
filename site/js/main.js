@@ -10,6 +10,8 @@
 //   compare.js  compare two cities: time difference, arc    (tz, view, anim, search)
 //   timeslider.js  the time slider: shifts the page's clock  (tz, zones)
 //   input.js    pointer, wheel and button handlers          (zones, tz, view, anim)
+//   palette.js  canvas colours per theme (light / dark)     (no imports)
+//   theme.js    sun/moon button, saved choice               (palette)
 import {refresh,stamp} from './zones.js';
 import {size,addOverlay} from './view.js';
 import {tipUpdate} from './tooltip.js';
@@ -19,7 +21,12 @@ import * as input from './input.js';
 import * as changes from './changes.js';
 import * as compare from './compare.js';
 import * as timeslider from './timeslider.js';
-const lb=document.getElementById('lb'),st=[];for(let o=-12;o<=14;o++)st.push(`hsl(${(o*15+360)%360},55%,48%)`);lb.style.background=`linear-gradient(90deg,${st.join(',')})`;
+import * as theme from './theme.js';
+import {landColor,onPalette} from './palette.js';
+theme.init();   // first: it sets the globe's palette before anything is drawn
+const lb=document.getElementById('lb');
+function legend(){const st=[];for(let o=-12;o<=14;o++)st.push(landColor(o));lb.style.background=`linear-gradient(90deg,${st.join(',')})`}
+legend();onPalette(legend);
 window.addEventListener('resize',size);if(window.ResizeObserver)new ResizeObserver(size).observe(document.getElementById('wrap'));   // any layout change, not only the window
 size();refresh();setInterval(stamp,1000);setInterval(refresh,60000);
 input.init();search.init();changes.init();compare.init();timeslider.init();

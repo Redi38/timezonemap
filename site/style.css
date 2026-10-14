@@ -1,12 +1,15 @@
-:root{--bg:#eef2f7;--fg:#13202f;--mut:#566679;--chip:#ffffff;--line:#c9d3df;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
-@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#070d19;--fg:#e8eef7;--mut:#8fa1b8;--chip:#111b2e;--line:#243350}}
-:root[data-theme="dark"]{--bg:#070d19;--fg:#e8eef7;--mut:#8fa1b8;--chip:#111b2e;--line:#243350}
+:root{--bg:#eef2f7;--fg:#13202f;--mut:#566679;--chip:#ffffff;--line:#c9d3df;--halo:0 1px 3px #fffc,0 0 2px #fffc;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#070d19;--fg:#e8eef7;--mut:#8fa1b8;--chip:#111b2e;--line:#243350;--halo:0 1px 3px #000a,0 0 2px #000a;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#070d19;--fg:#e8eef7;--mut:#8fa1b8;--chip:#111b2e;--line:#243350;--halo:0 1px 3px #000a,0 0 2px #000a;color-scheme:dark}
+:root[data-theme="light"]{color-scheme:light}   /* native controls (slider, search box) follow the chosen theme, also when it differs from the system's */
 html{scroll-padding-top:env(safe-area-inset-top,0px)}
 html,body{height:100%;margin:0}
 body{background:var(--bg);color:var(--fg);font:14px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif;display:flex;flex-direction:column;overflow:hidden}
 header{display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:14px 18px 0;flex-wrap:wrap}
 h1{margin:0;font-size:20px;font-weight:650;letter-spacing:-.01em}
 #utc{color:var(--mut);font-variant-numeric:tabular-nums}
+#hr{display:flex;align-items:center;gap:10px}
+#bthm{display:flex;align-items:center;justify-content:center;width:34px;height:34px;padding:0;border-radius:50%}   /* sun/moon, top right */
 #wrap{position:relative;flex:1;min-height:0}
 canvas{display:block;touch-action:none;cursor:grab}
 canvas:active{cursor:grabbing}
@@ -57,7 +60,7 @@ button:focus-visible{outline:2px solid #4da3ff;outline-offset:2px}
 @media (max-width:520px){#ts{flex-wrap:wrap}#ts input{order:2}#ts #tsl{order:3;flex:1 0 100%;width:auto;text-align:center}}
 
 /* bottom controls float over the globe with no background of their own */
-#ctl{position:absolute;left:0;right:0;bottom:0;z-index:3;background:none;pointer-events:none;padding-bottom:4px;text-shadow:0 1px 3px #000a,0 0 2px #000a}
+#ctl{position:absolute;left:0;right:0;bottom:0;z-index:3;background:none;pointer-events:none;padding-bottom:4px;text-shadow:var(--halo)}
 #ctl #bar,#ctl #ts,#ctl #leg{pointer-events:none}
 #ctl button,#ctl input,#ctl label,#ctl #lb{pointer-events:auto}
 #ctl #leg{margin-bottom:6px}

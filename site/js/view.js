@@ -1,6 +1,7 @@
 // Projection and drawing: the orthographic globe, camera (rotation and zoom), detailed outlines, hit-testing and the frame renderer.
 // Owns the camera and the highlighted country; other modules read them through the exports and change them through the functions.
 import {F,col,gcol,refresh,zver} from './zones.js';
+import {pal} from './palette.js';
 import {fo,changeBadge,nowDate} from './tz.js';
 import {fetchDetail} from './detail.js';
 import {DATA} from './data-files.js';
@@ -27,7 +28,8 @@ export function sunPoint(d){const R=Math.PI/180,n=d/864e5+2440587.5-2451545,   /
 // and 108 degrees) are three softer steps beyond the terminator (90 degrees); a glow marks the point under the sun.
 const NIGHT=[[90,.18],[96,.12],[102,.12],[108,.12]];
 function drawNight(){const s=sunPoint(nowDate()),c=[s[0]+180,-s[1]];
- for(const [r,a] of NIGHT){ctx.beginPath();path(d3.geoCircle().center(c).radius(r)());ctx.fillStyle=`rgba(2,6,20,${a})`;ctx.fill()}
+ NIGHT.forEach(([r,a],i)=>{ctx.beginPath();path(d3.geoCircle().center(c).radius(r)());
+  ctx.globalCompositeOperation=pal.nightMul?'multiply':'source-over';ctx.fillStyle=pal.nightMul?pal.nightMul[i]:`rgba(${pal.night},${a})`;ctx.fill()});ctx.globalCompositeOperation='source-over';
  if(d3.geoDistance(ctr,s)>1.5)return;const p=proj(s);if(!p)return;
  const g=ctx.createRadialGradient(p[0],p[1],0,p[0],p[1],18);g.addColorStop(0,'rgba(255,236,140,.95)');g.addColorStop(1,'rgba(255,236,140,0)');
  ctx.beginPath();ctx.arc(p[0],p[1],18,0,6.2832);ctx.fillStyle=g;ctx.fill();ctx.beginPath();ctx.arc(p[0],p[1],4,0,6.2832);ctx.fillStyle='#fff6c2';ctx.fill()}
@@ -72,15 +74,15 @@ function drawZones(f,only){ctx.save();let P=null;   // zoomed in the outline is 
  for(const g of f.gs){if(only!==undefined&&g.k!==only)continue;let n=0;ctx.beginPath();
   if(detOn&&g.dp.length){for(const dp of g.dp)for(const it of dp.items)if(vis(it.c,it.r)){itemPath(it);n++}}
   else for(const p of g.parts)if(vis(p.c,p.r)){path(p.geo);n++}
-  if(!n)continue;ctx.lineWidth=1.3;ctx.strokeStyle='rgba(6,12,24,.6)';ctx.stroke();ctx.fillStyle=gcol(g,only!==undefined||(inl&&f===hov&&g.k===hgk));ctx.fill();chgTint(!!g.chg)}
+  if(!n)continue;ctx.lineWidth=1.3;ctx.strokeStyle=pal.sep;ctx.stroke();ctx.fillStyle=gcol(g,only!==undefined||(inl&&f===hov&&g.k===hgk));ctx.fill();chgTint(!!g.chg)}
  ctx.restore();if(only!==undefined)return;if(P)ctx.stroke(P);else{ctx.beginPath();pathF(f);ctx.stroke()}}
 // Zones too small for the country outline (islands, enclaves) get a dot at their real position.
 function drawMarks(){for(const f of F){if(!f.gs||f.gs.length<2)continue;
  for(const g of f.gs){
   for(const m of g.marks){m.p=null;if(d3.geoDistance(ctr,m.ll)>1.5)continue;const p=m.p=proj(m.ll);if(!p)continue;const on=f===hov&&g.k===hgk;
-   ctx.beginPath();ctx.arc(p[0],p[1],on?6:4.5,0,6.2832);ctx.fillStyle=gcol(g,on);ctx.fill();ctx.lineWidth=1.6;ctx.strokeStyle='#fff';ctx.stroke();
-   if(on||k>k0*1.7){ctx.font='650 12px system-ui,sans-serif';ctx.lineWidth=3;ctx.strokeStyle='rgba(5,10,20,.85)';ctx.fillStyle='#fff';ctx.strokeText(g.t,p[0],p[1]-12);ctx.fillText(g.t,p[0],p[1]-12);
-    if(on||k>k0*3.5){ctx.font='10px system-ui,sans-serif';ctx.lineWidth=2.5;ctx.strokeText(m.n,p[0],p[1]+13);ctx.fillStyle='rgba(235,242,255,.85)';ctx.fillText(m.n,p[0],p[1]+13)}}}}}}
+   ctx.beginPath();ctx.arc(p[0],p[1],on?6:4.5,0,6.2832);ctx.fillStyle=gcol(g,on);ctx.fill();ctx.lineWidth=1.6;ctx.strokeStyle=pal.ring;ctx.stroke();
+   if(on||k>k0*1.7){ctx.font='650 12px system-ui,sans-serif';ctx.lineWidth=3;ctx.strokeStyle=pal.halo;ctx.fillStyle=pal.txt;ctx.strokeText(g.t,p[0],p[1]-12);ctx.fillText(g.t,p[0],p[1]-12);
+    if(on||k>k0*3.5){ctx.font='10px system-ui,sans-serif';ctx.lineWidth=2.5;ctx.strokeText(m.n,p[0],p[1]+13);ctx.fillStyle=pal.txt2;ctx.fillText(m.n,p[0],p[1]+13)}}}}}}
 // Territories too small to see (Gibraltar, Monaco, Macau, Nauru, ...) get a dot at their position once zoomed in.  A feature is a speck
 // while its outline is under SPECK_PX pixels in radius; the dot goes away by itself when zooming makes the outline big enough to see.
 // f.sp is the dot's screen position (null when none), which pick() uses for hit-testing.  Countries with several zones have their own markers.
@@ -88,30 +90,30 @@ const SPECK_PX=4;
 function drawSpecks(){const near=k>k0*2.5;
  for(const f of F){f.sp=null;if(!near||(f.gs&&f.gs.length>1)||f.br*k>=SPECK_PX||d3.geoDistance(ctr,f.c)>1.5)continue;
   const p=f.sp=proj(f.c);if(!p)continue;const on=f===hov;
-  ctx.beginPath();ctx.arc(p[0],p[1],on?6:4.5,0,6.2832);ctx.fillStyle=col(f,on);ctx.fill();chgTint(!!f.chg);ctx.lineWidth=1.6;ctx.strokeStyle='#fff';ctx.stroke();
-  if(on||k>k0*6){ctx.font='650 12px system-ui,sans-serif';ctx.lineWidth=3;ctx.strokeStyle='rgba(5,10,20,.85)';ctx.fillStyle='#fff';
+  ctx.beginPath();ctx.arc(p[0],p[1],on?6:4.5,0,6.2832);ctx.fillStyle=col(f,on);ctx.fill();chgTint(!!f.chg);ctx.lineWidth=1.6;ctx.strokeStyle=pal.ring;ctx.stroke();
+  if(on||k>k0*6){ctx.font='650 12px system-ui,sans-serif';ctx.lineWidth=3;ctx.strokeStyle=pal.halo;ctx.fillStyle=pal.txt;
    if(f.t){ctx.strokeText(f.t,p[0],p[1]-12);ctx.fillText(f.t,p[0],p[1]-12)}
-   ctx.font='10px system-ui,sans-serif';ctx.lineWidth=2.5;ctx.strokeText(f.properties.n,p[0],p[1]+13);ctx.fillStyle='rgba(235,242,255,.85)';ctx.fillText(f.properties.n,p[0],p[1]+13)}}}
+   ctx.font='10px system-ui,sans-serif';ctx.lineWidth=2.5;ctx.strokeText(f.properties.n,p[0],p[1]+13);ctx.fillStyle=pal.txt2;ctx.fillText(f.properties.n,p[0],p[1]+13)}}}
 // Clock-change layer: what changes its clocks this month is tinted amber and outlined, everything else is dimmed.
 // Called right after a country (or zone group) was filled, while its path is still current.
-function chgTint(on){if(!showChg)return;const lw=ctx.lineWidth,ss=ctx.strokeStyle;ctx.fillStyle=on?'rgba(255,196,40,.45)':'rgba(5,10,22,.55)';ctx.fill();
- if(on){ctx.lineWidth=2.2;ctx.strokeStyle='#ffc233';ctx.stroke()}ctx.lineWidth=lw;ctx.strokeStyle=ss}
+function chgTint(on){if(!showChg)return;const lw=ctx.lineWidth,ss=ctx.strokeStyle;ctx.fillStyle=on?pal.chgFill:pal.dim;ctx.fill();
+ if(on){ctx.lineWidth=2.2;ctx.strokeStyle=pal.chgLine;ctx.stroke()}ctx.lineWidth=lw;ctx.strokeStyle=ss}
 const badge=o=>showChg&&o.chg?changeBadge(o.chg[0]):'';
 function label(c,a,t,n,x){const px=a*k*k;if(px<480||d3.geoDistance(ctr,c)>1.25)return null;const p=proj(c);if(!p)return null;
- const big=px>3600;ctx.font='650 12px system-ui,sans-serif';ctx.lineWidth=3;ctx.strokeStyle='rgba(5,10,20,.85)';ctx.fillStyle='#fff';
+ const big=px>3600;ctx.font='650 12px system-ui,sans-serif';ctx.lineWidth=3;ctx.strokeStyle=pal.halo;ctx.fillStyle=pal.txt;
  if(t){ctx.strokeText(t,p[0],p[1]);ctx.fillText(t,p[0],p[1])}
- if(big&&n){ctx.font='10px system-ui,sans-serif';ctx.lineWidth=2.5;const y=p[1]+(t?13:0);ctx.strokeText(n,p[0],y);ctx.fillStyle='rgba(235,242,255,.85)';ctx.fillText(n,p[0],y)}
- if(x){ctx.font='650 10.5px system-ui,sans-serif';ctx.lineWidth=2.5;ctx.strokeStyle='rgba(5,10,20,.9)';ctx.fillStyle='#ffd34d';const y=p[1]+13*((t?1:0)+(big&&n?1:0));ctx.strokeText(x,p[0],y);ctx.fillText(x,p[0],y)}
+ if(big&&n){ctx.font='10px system-ui,sans-serif';ctx.lineWidth=2.5;const y=p[1]+(t?13:0);ctx.strokeText(n,p[0],y);ctx.fillStyle=pal.txt2;ctx.fillText(n,p[0],y)}
+ if(x){ctx.font='650 10.5px system-ui,sans-serif';ctx.lineWidth=2.5;ctx.strokeStyle=pal.halo;ctx.fillStyle=pal.badge;const y=p[1]+13*((t?1:0)+(big&&n?1:0));ctx.strokeText(x,p[0],y);ctx.fillText(x,p[0],y)}
  return p}
 // ---- frame
 let inl=false,cKey='',pKey='';const cache=document.createElement('canvas'),cctx=cache.getContext('2d');
 function drawBase(){
- ctx.beginPath();path({type:'Sphere'});const g=ctx.createRadialGradient(W/2-k*.35,H/2-k*.35,k*.1,W/2,H/2,k);g.addColorStop(0,'#1d4272');g.addColorStop(1,'#08152b');ctx.fillStyle=g;ctx.fill();
- ctx.beginPath();path(d3.geoGraticule10());ctx.strokeStyle='rgba(255,255,255,.07)';ctx.lineWidth=.6;ctx.stroke();
- ctx.lineWidth=.6;ctx.strokeStyle='rgba(6,12,24,.75)';
+ ctx.beginPath();path({type:'Sphere'});const g=ctx.createRadialGradient(W/2-k*.35,H/2-k*.35,k*.1,W/2,H/2,k);g.addColorStop(0,pal.ocean0);g.addColorStop(1,pal.ocean1);ctx.fillStyle=g;ctx.fill();
+ ctx.beginPath();path(d3.geoGraticule10());ctx.strokeStyle=pal.grat;ctx.lineWidth=.6;ctx.stroke();
+ ctx.lineWidth=.6;ctx.strokeStyle=pal.coast;
  for(const f of F){if(!vis(f.bc,f.br))continue;if(f.gs&&f.gs.length>1){drawZones(f);continue}ctx.beginPath();pathF(f);ctx.fillStyle=col(f,inl&&f===hov);ctx.fill();ctx.stroke();chgTint(!!f.chg)}}
 // The hovered country (for a multi-zone one, only the hovered zone group) in its highlight colour, over the base layer.
-function paintHover(){const f=hov;ctx.lineWidth=.6;ctx.strokeStyle='rgba(6,12,24,.75)';
+function paintHover(){const f=hov;ctx.lineWidth=.6;ctx.strokeStyle=pal.coast;
  if(f.gs&&f.gs.length>1){if(hgk!==null&&vis(f.bc,f.br))drawZones(f,hgk);return}
  if(!vis(f.bc,f.br))return;ctx.beginPath();pathF(f);ctx.fillStyle=col(f,true);ctx.fill();ctx.stroke();chgTint(!!f.chg)}
 // Extra layers drawn at the end of every frame, in registration order (the search marker, the tooltip). Kept as hooks so that
@@ -130,7 +132,7 @@ export function draw(busy){const t0=performance.now();ctx.setTransform(dpr,0,0,d
  // depends only on the camera and the zone data. Once the camera has been still for a frame it is copied into `cache`, and later
  // frames blit that copy; the hovered country is repainted over it, so a hover change never invalidates it. While the globe moves
  // there is nothing to reuse: it is drawn straight to the canvas as before, hover colour included, and no copy is made.
- const key=[W,H,dpr,k,rot[0],rot[1],detOn,detLevel,zver,showChg].join(),still=!moving;inl=moving;let drew=true;
+ const key=[W,H,dpr,k,rot[0],rot[1],detOn,detLevel,zver,showChg,pal.id].join(),still=!moving;inl=moving;let drew=true;
  if(still&&key===cKey){ctx.setTransform(1,0,0,1,0,0);ctx.drawImage(cache,0,0);ctx.setTransform(dpr,0,0,dpr,0,0);drew=false}
  else{drawBase();
   if(still&&key===pKey){if(cache.width!==cv.width||cache.height!==cv.height){cache.width=cv.width;cache.height=cv.height}
@@ -138,8 +140,8 @@ export function draw(busy){const t0=performance.now();ctx.setTransform(dpr,0,0,d
  pKey=key;
  if(!inl&&hov)paintHover();
  drawNight();
- if(hov){ctx.beginPath();pathF(hov);ctx.strokeStyle='#fff';ctx.lineWidth=1.6;ctx.stroke()}
- ctx.beginPath();ctx.arc(W/2,H/2,k,0,6.2832);ctx.strokeStyle='rgba(140,190,255,.4)';ctx.lineWidth=1.5;ctx.stroke();
+ if(hov){ctx.beginPath();pathF(hov);ctx.strokeStyle=pal.hov;ctx.lineWidth=1.6;ctx.stroke()}
+ ctx.beginPath();ctx.arc(W/2,H/2,k,0,6.2832);ctx.strokeStyle=pal.limb;ctx.lineWidth=1.5;ctx.stroke();
  ctx.textAlign='center';ctx.textBaseline='middle';ctx.lineJoin='round';
  drawMarks();drawSpecks();
  for(const f of F){

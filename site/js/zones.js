@@ -1,6 +1,7 @@
 // Zone data: which zone(s) each country is in, grouping of zones for drawing, colours and the per-country time strings.
 // Zone names, offsets, DST and clock formatting are in tz.js.  Depends on tz.js and the DATA and d3 globals.
 import {offOf,isKnownZone,nearestZone,zoneRule,clock,monthChanges,nowDate} from './tz.js';
+import {landColor,pal} from './palette.js';
 export const F=DATA.features;
 export let now=new Date();
 export let zver=0;   // bumped by refresh(): whatever was drawn from the zone data is out of date
@@ -13,8 +14,8 @@ export function zoneGroups(f){const m=new Map();
 function mapGroups(f){const gs=zoneGroups(f);
  for(const g of gs){g.parts=f.parts.filter(p=>p.z.some(z=>g.zs.includes(z)));g.marks=f.marks.filter(m=>g.zs.includes(m.z));g.a=g.parts.reduce((t,p)=>t+p.a,0);g.dp=f.dp?f.dp.filter(p=>p.z.some(z=>g.zs.includes(z))):[]}
  return gs.filter(g=>g.parts.length||g.marks.length)}
-export const gcol=(g,h)=>`hsl(${(g.off*15+360)%360},55%,${h?70:48}%)`;
-export const col=(f,h)=>f.tz?`hsl(${(f.off*15+360)%360},55%,${h?70:48}%)`:'#35425a';
+export const gcol=(g,h)=>landColor(g.off,h);
+export const col=(f,h)=>f.tz?landColor(f.off,h):pal.nop;
 F.forEach(f=>{const g=f.geometry,ps=g.type==='Polygon'?[g.coordinates]:g.coordinates;let best=ps[0],ba=-1;
  ps.forEach(p=>{const a=d3.geoArea({type:'Polygon',coordinates:p});if(a>ba){ba=a;best=p}});
  f.c=d3.geoCentroid({type:'Polygon',coordinates:best});f.a=d3.geoArea(f);

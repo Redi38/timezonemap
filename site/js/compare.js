@@ -4,6 +4,7 @@ import {offOf,fo,clock,zoneName,dayStr,hm,nowDate} from './tz.js';
 import {ctx,proj,ctr,path,k,k0} from './view.js';
 import {setAuto,flyTo} from './anim.js';
 import {findCities,loadCities,onCities} from './search.js';
+import {pal} from './palette.js';
 const btn=document.getElementById('bcmp'),box=document.getElementById('cmp');
 const COL=['#ffd34d','#5fd1ff'],DAY=864e5;
 const esc=t=>String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -60,7 +61,7 @@ export function init(){
  setInterval(render,1000)}
 // Overlay (drawn after the map): both cities as coloured pins with their names, joined by a dashed great-circle arc.
 export function draw(){if(!open||(!pick[0]&&!pick[1]))return;
- if(pick[0]&&pick[1]){ctx.beginPath();path({type:'LineString',coordinates:[pick[0].ll,pick[1].ll]});ctx.setLineDash([7,6]);ctx.lineWidth=2;ctx.strokeStyle='rgba(255,255,255,.9)';ctx.stroke();ctx.setLineDash([])}
+ if(pick[0]&&pick[1]){ctx.beginPath();path({type:'LineString',coordinates:[pick[0].ll,pick[1].ll]});ctx.setLineDash([7,6]);ctx.lineWidth=2;ctx.strokeStyle=pal.arc;ctx.stroke();ctx.setLineDash([])}
  pick.forEach((c,i)=>{if(!c||d3.geoDistance(ctr,c.ll)>1.5)return;const p=proj(c.ll);if(!p)return;
   ctx.beginPath();ctx.arc(p[0],p[1],6,0,6.2832);ctx.fillStyle=COL[i];ctx.fill();ctx.lineWidth=2;ctx.strokeStyle='#13202f';ctx.stroke();
-  ctx.font='650 13px system-ui,sans-serif';ctx.lineWidth=3.5;ctx.strokeStyle='rgba(5,10,20,.9)';ctx.fillStyle='#fff';ctx.strokeText(c.n,p[0],p[1]-14);ctx.fillText(c.n,p[0],p[1]-14)})}
+  ctx.font='650 13px system-ui,sans-serif';ctx.lineWidth=3.5;ctx.strokeStyle=pal.halo;ctx.fillStyle=pal.txt;ctx.strokeText(c.n,p[0],p[1]-14);ctx.fillText(c.n,p[0],p[1]-14)})}

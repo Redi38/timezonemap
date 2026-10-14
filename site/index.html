@@ -4,9 +4,10 @@
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <title>World Time Globe</title>
 <link rel="stylesheet" href="style.css">
-<noscript><style>#sb,#ctl{display:none}</style></noscript>
+<script src="theme-init.js"></script>
+<noscript><style>#sb,#ctl,#bthm{display:none}</style></noscript>
 </head><body>
-<header><h1>World Time Globe</h1><span id="utc"></span></header>
+<header><h1>World Time Globe</h1><div id="hr"><span id="utc"></span><button id="bthm" aria-label="Switch theme"></button></div></header>
 <div id="wrap"><canvas id="g"></canvas><div id="tip"></div>
 <noscript><p id="nojs"><b>JavaScript is turned off.</b><br>World Time Globe draws an interactive globe of the world's time zones and needs JavaScript to run. Please turn it on for this site and reload the page.</p></noscript>
 <div id="sb"><input id="q" type="search" placeholder="Search a city or country" autocomplete="off" spellcheck="false" aria-label="Search a city or country" role="combobox" aria-expanded="false" aria-controls="res"><ul id="res" role="listbox"></ul><div id="found" aria-live="polite"></div></div><div id="cmp" hidden></div><div id="cl" hidden></div>

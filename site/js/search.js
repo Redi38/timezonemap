@@ -4,6 +4,7 @@ import {offOf,fo,clock,zoneName,nowDate} from './tz.js';
 import {ctx,proj,ctr,k,k0,vis,pathF,inF} from './view.js';
 import {setAuto,flyTo,cancelFly} from './anim.js';
 import {DATA} from './data-files.js';
+import {pal} from './palette.js';
 const qEl=document.getElementById('q'),resEl=document.getElementById('res'),foundEl=document.getElementById('found');
 const nrm=t=>t.normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/[^a-z0-9 ,'-]/g,' ').replace(/\s+/g,' ').trim();
 const CALIAS={usa:'United States of America',us:'United States of America','united states':'United States of America',america:'United States of America',uk:'United Kingdom',britain:'United Kingdom',england:'United Kingdom',china:"People's Republic of China",czechia:'Czech Republic',burma:'Myanmar','cote d\'ivoire':'Ivory Coast',holland:'Netherlands',russia:'Russia'};
@@ -47,11 +48,11 @@ function card(){if(!sel)return;const it=sel,t=nowDate().getTime();let h;
 function clearSel(){sel=null;cancelFly();foundEl.style.display='none';foundEl.dataset.h='';qEl.value=''}
 // outline of the country the result is in, and a pulsing pin at the exact spot (a view overlay, drawn after the map)
 export function drawSel(){if(!sel)return;const f=sel.f;
- if(f&&vis(f.bc,f.br)){ctx.beginPath();pathF(f);ctx.lineWidth=2.4;ctx.strokeStyle='#ffd34d';ctx.stroke()}
+ if(f&&vis(f.bc,f.br)){ctx.beginPath();pathF(f);ctx.lineWidth=2.4;ctx.strokeStyle=pal.sel;ctx.stroke()}
  if(sel.kind!=='city'||d3.geoDistance(ctr,sel.ll)>1.5)return;const p=proj(sel.ll);if(!p)return;const ph=(performance.now()%1600)/1600;
- ctx.beginPath();ctx.arc(p[0],p[1],6+ph*18,0,6.2832);ctx.lineWidth=2;ctx.strokeStyle=`rgba(255,211,77,${1-ph})`;ctx.stroke();
- ctx.beginPath();ctx.arc(p[0],p[1],5,0,6.2832);ctx.fillStyle='#ffd34d';ctx.fill();ctx.lineWidth=2;ctx.strokeStyle='#13202f';ctx.stroke();
- ctx.font='650 13px system-ui,sans-serif';ctx.lineWidth=3.5;ctx.strokeStyle='rgba(5,10,20,.9)';ctx.fillStyle='#fff';ctx.strokeText(sel.n,p[0],p[1]-16);ctx.fillText(sel.n,p[0],p[1]-16)}
+ ctx.beginPath();ctx.arc(p[0],p[1],6+ph*18,0,6.2832);ctx.lineWidth=2;ctx.strokeStyle=`rgba(${pal.selRgb},${1-ph})`;ctx.stroke();
+ ctx.beginPath();ctx.arc(p[0],p[1],5,0,6.2832);ctx.fillStyle=pal.sel;ctx.fill();ctx.lineWidth=2;ctx.strokeStyle='#13202f';ctx.stroke();
+ ctx.font='650 13px system-ui,sans-serif';ctx.lineWidth=3.5;ctx.strokeStyle=pal.halo;ctx.fillStyle=pal.txt;ctx.strokeText(sel.n,p[0],p[1]-16);ctx.fillText(sel.n,p[0],p[1]-16)}
 export function init(){
  qEl.addEventListener('focus',loadCities);
  qEl.addEventListener('input',()=>{loadCities();search()});
