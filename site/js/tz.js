@@ -26,15 +26,16 @@ export function isKnownZone(tz,d){try{offOf(tz,d);return true}catch(e){return fa
 // The zone of zs whose offset is closest to the one a longitude would have.
 export function nearestZone(zs,lon,d){let b=null,bd=1e9;for(const z of zs){const e=Math.abs(offOf(z,d)-lon/15);if(e<bd){bd=e;b=z}}return b}
 
-// ---- daylight saving
-const dstc={};
 // ---- the page's clock: real time plus the time slider's shift (ms).  Everything that shows "now" reads it from here, so the
 // zone colours, clocks, tooltips, panels and the day/night shading all move together.
 let shift=0;
 export const getShift=()=>shift;
 export const nowDate=()=>new Date(Date.now()+shift);
-export function setShift(ms){shift=ms;for(const z in dstc)delete dstc[z]}   // the daylight-saving look-ahead starts from the clock
-function zname(tz,t){const n=new Intl.DateTimeFormat('en',{timeZone:tz,timeZoneName:'long'}).formatToParts(t).find(p=>p.type==='timeZoneName').value;return /^GMT/.test(n)?'':n}
+export function setShift(ms){shift=ms}   // nothing is cached per clock value: see dstInfo
+
+// ---- daylight saving
+const znf={};
+function zname(tz,t){const f=znf[tz]||(znf[tz]=new Intl.DateTimeFormat('en',{timeZone:tz,timeZoneName:'long'})),n=f.formatToParts(t).find(p=>p.type==='timeZoneName').value;return /^GMT/.test(n)?'':n}
 // First instant in (lo, hi] at which the offset is no longer po (the offset at lo), found by bisection to a minute.
 function edge(tz,lo,hi,po){while(hi-lo>6e4){const m=Math.floor((lo+hi)/2);if(offOf(tz,new Date(m))===po)lo=m;else hi=m}return hi}
 // Offset changes in [a, b] as [{t, from, to}], sampled weekly (two changes inside one week would cancel out).
@@ -49,17 +50,27 @@ const PAUSE_MAX=75*864e5;
 function pauseOf(tr,t0){for(let i=0;i<tr.length-1;i++){const a=tr[i],b=tr[i+1];
  if(a.to<a.from&&b.to===a.from&&b.t-a.t<PAUSE_MAX&&b.t>t0)return{base:a.from,alt:a.to,t1:a.t,t2:b.t}}return null}
 // Is the middle of [a, b] (ms) in Ramadan?  Used only to word the tooltip; false where the browser lacks the Islamic calendar.
-function inRamadan(a,b){try{return new Intl.DateTimeFormat('en-u-ca-islamic-umalqura',{month:'numeric'}).format(new Date((a+b)/2))==='9'}catch(e){return false}}
+let ramf;
+function inRamadan(a,b){try{ramf=ramf||new Intl.DateTimeFormat('en-u-ca-islamic-umalqura',{month:'numeric'});return ramf.format(new Date((a+b)/2))==='9'}catch(e){return false}}
 // Looks ~13 months ahead (and 45 days back, to catch a pause that is under way) for clock changes.
 // A zone observes DST when its offset moves both up and down in that window; a short drop that returns (see pauseOf) is reported
 // as {special:true, base, alt, ram, next} instead: base is the usual offset, alt the temporary one.
-export function dstInfo(tz){const c=dstc[tz],n=nowDate().getTime();if(c&&n<c.exp)return c;
- const t0=n,DAY=864e5,all=transitions(tz,t0-45*DAY,t0+58*7*DAY),tr=all.filter(x=>x.t>t0),exp=Math.min(t0+6*36e5,tr.length?tr[0].t:Infinity);
+//
+// Finding the changes is the expensive part (about 60 offset lookups and a bisection per change, for every zone), so it is done
+// once per zone, over a window SLACK wider on both sides (trc: {a: the clock when it was done, tr: the changes}), and every later
+// call, whatever the clock says, only reads from it.  The time slider moves the clock by up to a day, which stays inside the
+// slack; a clock more than SLACK from `a` (the page left open for two weeks, or a test jumping to another date) redoes the zone.
+// The answer built from the changes is kept in dstc for the clock values in [from, exp), so it is also reused while the clock
+// ticks, and moving the slider back to an earlier time simply builds it again from the changes, which is cheap.
+const DAY=864e5,LOOK_BACK=45*DAY,LOOK_AHEAD=58*7*DAY,SLACK=14*DAY,trc={},dstc={};
+export function dstInfo(tz){const n=nowDate().getTime(),c=dstc[tz];if(c&&c.from<=n&&n<c.exp)return c;
+ let T=trc[tz];if(!T||Math.abs(n-T.a)>SLACK)T=trc[tz]={a:n,tr:transitions(tz,n-LOOK_BACK-SLACK,n+LOOK_AHEAD+SLACK)};
+ const t0=n,all=T.tr.filter(x=>x.t>t0-LOOK_BACK&&x.t<=t0+LOOK_AHEAD),tr=all.filter(x=>x.t>t0),from=t0,exp=Math.min(t0+6*36e5,tr.length?tr[0].t:Infinity);
  const ps=pauseOf(all,t0);
- if(ps)return dstc[tz]={dst:true,special:true,exp,base:ps.base,alt:ps.alt,ram:inRamadan(ps.t1,ps.t2),next:dateStr(tz,ps.t1>t0?ps.t1:ps.t2)};
+ if(ps)return dstc[tz]={dst:true,special:true,from,exp,base:ps.base,alt:ps.alt,ram:inRamadan(ps.t1,ps.t2),next:dateStr(tz,ps.t1>t0?ps.t1:ps.t2)};
  const up=tr.find(x=>x.to>x.from),dn=tr.find(x=>x.to<x.from);
- if(!up||!dn)return dstc[tz]={dst:false,exp};
- return dstc[tz]={dst:true,exp,sOff:up.to,wOff:dn.to,sName:zname(tz,up.t+DAY),wName:zname(tz,dn.t+DAY),next:dateStr(tz,tr[0].t)}}
+ if(!up||!dn)return dstc[tz]={dst:false,from,exp};
+ return dstc[tz]={dst:true,from,exp,sOff:up.to,wOff:dn.to,sName:zname(tz,up.t+DAY),wName:zname(tz,dn.t+DAY),next:dateStr(tz,tr[0].t)}}
 // Zones with the same key behave identically right now and from now on: same offset, same DST rule.
 export function zoneRule(tz,d){const o=offOf(tz,d),i=dstInfo(tz);return{o,i,k:o+'|'+(i.special?'p'+i.base+'/'+i.alt:i.dst?i.sOff+'/'+i.wOff:'-')}}
 
