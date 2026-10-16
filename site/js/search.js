@@ -5,6 +5,7 @@ import {ctx,proj,ctr,k,k0,vis,pathF,inF} from './view.js';
 import {setAuto,flyTo,cancelFly} from './anim.js';
 import {DATA} from './data-files.js';
 import {pal} from './palette.js';
+import {daylight,sunWords} from './daylight.js';
 const qEl=document.getElementById('q'),resEl=document.getElementById('res'),foundEl=document.getElementById('found');
 const nrm=t=>t.normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/[^a-z0-9 ,'-]/g,' ').replace(/\s+/g,' ').trim();
 const CALIAS={usa:'United States of America',us:'United States of America','united states':'United States of America',america:'United States of America',uk:'United Kingdom',britain:'United Kingdom',england:'United Kingdom',china:"People's Republic of China",czechia:'Czech Republic',burma:'Myanmar','cote d\'ivoire':'Ivory Coast',holland:'Netherlands',russia:'Russia'};
@@ -38,10 +39,12 @@ function choose(it){if(!it)return;close();qEl.value=it.n;qEl.blur();
  else{ll=it.f.c;z=Math.max(1,Math.min(7,.62/Math.sin(Math.min(1.3,it.f.br||.3))))}
  sel=it;setAuto(false);flyTo(ll,z);
  foundEl.style.display='block';card()}
+// Sunrise, sunset and length of daylight for the day the page's clock is on (the time slider moves it).
+const sunHtml=(ll,tz,d)=>`<div class="sun m">${sunWords(daylight(ll,tz,d)).lines.map(esc).join('<br>')}</div>`;
 function card(){if(!sel)return;const it=sel,t=nowDate().getTime();let h;
  const co=(l)=>`${Math.abs(l[1]).toFixed(2)}°${l[1]<0?'S':'N'}, ${Math.abs(l[0]).toFixed(2)}°${l[0]<0?'W':'E'}`;
  if(it.kind==='city'){const d=new Date(t),o=offOf(it.tz,d),tm=clock(it.tz,d,true);
-  h=`<b>${esc(it.n)}</b>, ${esc(it.cn)}<div class="m">${co(it.ll)}${it.f&&it.f.properties.n!==it.cn?' · in '+esc(it.f.properties.n):''}</div><div class="t">${tm} <span class="m">${fo(o)}</span></div><div class="m">${esc(zoneName(it.tz))}</div>`}
+  h=`<b>${esc(it.n)}</b>, ${esc(it.cn)}<div class="m">${co(it.ll)}${it.f&&it.f.properties.n!==it.cn?' · in '+esc(it.f.properties.n):''}</div><div class="t">${tm} <span class="m">${fo(o)}</span></div><div class="m">${esc(zoneName(it.tz))}</div>`+sunHtml(it.ll,it.tz,d)}
  else{const f=it.f,gs=f.gs&&f.gs.length>1?f.gs:null;
   h=`<b>${esc(f.properties.n)}</b><div class="m">centre ${co(f.c)}</div>`+(gs?`<div class="m">${gs.length} time zones: ${gs.map(g=>fo(g.off)).join(', ')}</div>`:f.tz?`<div class="t">${f.t} <span class="m">${fo(f.off)}</span></div><div class="m">${esc(zoneName(f.tz))}</div>`:'<div class="m">No official local time</div>')}
  const html=h+'<button aria-label="Clear" title="Clear">×</button>';if(foundEl.dataset.h!==html){foundEl.dataset.h=html;foundEl.innerHTML=html;foundEl.querySelector('button').onclick=clearSel}}

@@ -2,6 +2,7 @@
 // Owns the camera and the highlighted country; other modules read them through the exports and change them through the functions.
 import {F,col,gcol,refresh,zver} from './zones.js';
 import {pal} from './palette.js';
+import {sunPoint} from './sun.js';
 import {fo,changeBadge,nowDate} from './tz.js';
 import {fetchDetail} from './detail.js';
 import {DATA} from './data-files.js';
@@ -19,11 +20,6 @@ export function spin(dlon){rot[0]+=dlon}
 export function pan(dx,dy){lastMove=performance.now();rot[0]+=dx*57.3/k;rot[1]=Math.max(-90,Math.min(90,rot[1]-dy*57.3/k))}
 export const zoom=m=>{lastMove=performance.now();k=Math.max(k0*.6,Math.min(k0*12,k*m))};
 export const zoomedIn=()=>k>k0*DZ_LOAD;
-// Where the sun is straight overhead at moment d: [longitude, latitude] in degrees (low-precision solar coordinates, ~0.01 degrees).
-export function sunPoint(d){const R=Math.PI/180,n=d/864e5+2440587.5-2451545,   // days since J2000
- L=280.46+.9856474*n,g=(357.528+.9856003*n)*R,lam=(L+1.915*Math.sin(g)+.02*Math.sin(2*g))*R,eps=(23.439-4e-7*n)*R,   // mean longitude, mean anomaly, ecliptic longitude, obliquity
- ra=Math.atan2(Math.cos(eps)*Math.sin(lam),Math.cos(lam))/R,dec=Math.asin(Math.sin(eps)*Math.sin(lam))/R,gmst=280.46061837+360.98564736629*n;
- return[(((ra-gmst)%360)+540)%360-180,dec]}
 // Day and night: the sun is below the horizon on the shaded side.  Civil, nautical and astronomical twilight (solar zenith angle 96, 102
 // and 108 degrees) are three softer steps beyond the terminator (90 degrees); a glow marks the point under the sun.
 const NIGHT=[[90,.18],[96,.12],[102,.12],[108,.12]];

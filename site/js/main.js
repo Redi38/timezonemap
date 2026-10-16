@@ -11,6 +11,8 @@
 //   timeslider.js  the time slider: shifts the page's clock  (tz, zones)
 //   input.js    pointer, wheel and button handlers          (zones, tz, view, anim)
 //   palette.js  canvas colours per theme (light / dark)     (no imports)
+//   sun.js      where the sun is overhead, sunrise and sunset (no imports)
+//   daylight.js sunrise, sunset, day length in words for a place (tz, sun)
 //   theme.js    sun/moon button, saved choice               (palette)
 import {refresh,stamp} from './zones.js';
 import {size,addOverlay} from './view.js';

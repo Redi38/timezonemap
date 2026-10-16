@@ -16,6 +16,8 @@ zone borders inside big countries, and scrub a slider to see what the world look
 - **Compare cities.** Pick two cities and see the time difference between them.
 - **Time slider.** Move ±24 h from now; clocks, zones, DST and search all follow it. *Now* snaps back to live time.
 - **Day and night** with civil, nautical and astronomical twilight and a sun marker.
+- **Sunrise, sunset and day length** for a city, in its search card and in Compare, for the day the time slider is on,
+  with how much longer or shorter the day is than yesterday (and polar day / night near the poles).
 - **12 / 24-hour** display, pause/resume rotation, zoom buttons and touch support.
 - **Light and dark themes**, including a light-blue globe with pastel zones. Follows your system setting until you click
   the sun/moon button in the top right corner; it then remembers your choice.

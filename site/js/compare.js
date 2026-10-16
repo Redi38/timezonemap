@@ -5,6 +5,7 @@ import {ctx,proj,ctr,path,k,k0} from './view.js';
 import {setAuto,flyTo} from './anim.js';
 import {findCities,loadCities,onCities} from './search.js';
 import {pal} from './palette.js';
+import {daylight,sunWords} from './daylight.js';
 const btn=document.getElementById('bcmp'),box=document.getElementById('cmp');
 const COL=['#ffd34d','#5fd1ff'],DAY=864e5;
 const esc=t=>String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -21,7 +22,7 @@ function nextChange(a,b,d){const key=a.tz+'|'+b.tz+'|'+Math.floor(d.getTime()/DA
 // Everything the panel says about two cities at moment d.
 export function info(a,b,d){const oa=offOf(a.tz,d),ob=offOf(b.tz,d);return{oa,ob,diff:ob-oa,days:dayIdx(b,d)-dayIdx(a,d),change:nextChange(a,b,d)}}
 function render(){if(!open)return;const d=nowDate(),[a,b]=pick;let h='';
- const row=(c,i,rel)=>{const o=offOf(c.tz,d);return`<div class="r"><i style="background:${COL[i]}"></i><div class="n"><b>${esc(c.n)}</b>, ${esc(c.cn)}<div class="m">${fo(o)} · ${esc(zoneName(c.tz))}</div></div><div class="tm"><span class="t">${clock(c.tz,d,true)}</span><div class="m">${dayStr(c.tz,d)}${rel}</div></div></div>`};
+ const row=(c,i,rel)=>{const o=offOf(c.tz,d);return`<div class="r"><i style="background:${COL[i]}"></i><div class="n"><b>${esc(c.n)}</b>, ${esc(c.cn)}<div class="m">${fo(o)} · ${esc(zoneName(c.tz))}</div><div class="m" title="Sunrise to sunset, and the length of daylight">${esc(sunWords(daylight(c.ll,c.tz,d)).short)}</div></div><div class="tm"><span class="t">${clock(c.tz,d,true)}</span><div class="m">${dayStr(c.tz,d)}${rel}</div></div></div>`};
  if(a&&b){const x=info(a,b,d),nm=(c,o)=>esc(c.n===o.n?`${c.n} (${c.cn})`:c.n);
   h=`<div class="head"><b>${nm(b,a)}</b> is ${x.diff===0?'on <b>the same time</b> as':`<b>${ahead(x.diff)}</b>`} <b>${nm(a,b)}</b></div>`+row(a,0,'')+row(b,1,x.days>0?' · next day':x.days<0?' · previous day':'');
   if(a.tz===b.tz)h+=`<div class="note m">Both are in the same time zone.</div>`;
