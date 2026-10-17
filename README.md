@@ -18,6 +18,8 @@ zone borders inside big countries, and scrub a slider to see what the world look
 - **Day and night** with civil, nautical and astronomical twilight and a sun marker.
 - **Sunrise, sunset and day length** for a city, in its search card and in Compare, for the day the time slider is on,
   with how much longer or shorter the day is than yesterday (and polar day / night near the poles).
+- **Legend focus.** Point at an hour on the colour legend (or tap it) and only the zones with that UTC offset keep their
+  colour; click to keep the choice, click again or press Esc to clear it.
 - **12 / 24-hour** display, pause/resume rotation, zoom buttons and touch support.
 - **Light and dark themes**, including a light-blue globe with pastel zones. Follows your system setting until you click
   the sun/moon button in the top right corner; it then remembers your choice.

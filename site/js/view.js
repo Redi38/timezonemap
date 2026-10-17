@@ -9,11 +9,11 @@ import {zver} from './zones.js';
 import {cv,ctx,proj,path,W,H,k,rot,aim,getDpr} from './camera.js';
 import {detOn,getDetailLevel,pathF,prepare,noteCost} from './outlines.js';
 import {hov} from './hit.js';
-import {showChg,drawNight,drawMarks,drawSpecks,drawLabels,drawBase,paintHover} from './layers.js';
+import {showChg,focus,drawNight,drawMarks,drawSpecks,drawLabels,drawBase,paintHover} from './layers.js';
 export {cv,ctx,wrap,proj,path,W,H,k0,k,ctr,size,getRot,setCamera,spin,pan,zoom} from './camera.js';
 export {zoomedIn,vis,pathF,inF} from './outlines.js';
 export {hov,hgk,pick,clearHover} from './hit.js';
-export {showChg,setShowChg} from './layers.js';
+export {showChg,setShowChg,focus,setFocus} from './layers.js';
 // Extra layers drawn at the end of every frame, in registration order (the search marker, the tooltip). Kept as hooks so that
 // this module does not need to know about them.
 const overlays=[];export const addOverlay=fn=>{overlays.push(fn)};
@@ -25,7 +25,7 @@ export function draw(busy){const t0=performance.now(),dpr=getDpr();ctx.setTransf
  // depends only on the camera and the zone data. Once the camera has been still for a frame it is copied into `cache`, and later
  // frames blit that copy; the hovered country is repainted over it, so a hover change never invalidates it. While the globe moves
  // there is nothing to reuse: it is drawn straight to the canvas as before, hover colour included, and no copy is made.
- const key=[W,H,dpr,k,rot[0],rot[1],detOn,getDetailLevel(),zver,showChg,pal.id].join(),still=!moving,inl=moving;let drew=true;
+ const key=[W,H,dpr,k,rot[0],rot[1],detOn,getDetailLevel(),zver,showChg,focus,pal.id].join(),still=!moving,inl=moving;let drew=true;
  if(still&&key===cKey){ctx.setTransform(1,0,0,1,0,0);ctx.drawImage(cache,0,0);ctx.setTransform(dpr,0,0,dpr,0,0);drew=false}
  else{drawBase(inl);
   if(still&&key===pKey){if(cache.width!==cv.width||cache.height!==cv.height){cache.width=cv.width;cache.height=cv.height}
