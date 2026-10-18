@@ -5,7 +5,7 @@ import {F,col,gcol} from './zones.js';
 import {pal} from './palette.js';
 import {sunPoint} from './sun.js';
 import {fo,changeBadge,nowDate} from './tz.js';
-import {ctx,proj,path,W,H,k0,k,ctr} from './camera.js';
+import {ctx,proj,path,W,H,k0,k,ctr,rot} from './camera.js';
 import {detOn,vis,pathF,itemPath,outline2D} from './outlines.js';
 import {hov,hgk} from './hit.js';
 export let showChg=!1;export const setShowChg=v=>{showChg=v};   // clock-change layer on/off; live binding, read-only for importers
@@ -15,10 +15,17 @@ const off0=off=>off!==undefined&&off>=focus-.5&&off<focus+.5;
 // Day and night: the sun is below the horizon on the shaded side.  Civil, nautical and astronomical twilight (solar zenith angle 96, 102
 // and 108 degrees) are three softer steps beyond the terminator (90 degrees); a glow marks the point under the sun.
 const NIGHT=[[90,.18],[96,.12],[102,.12],[108,.12]];
-export function drawNight(){const s=sunPoint(nowDate()),c=[s[0]+180,-s[1]];
- NIGHT.forEach(([r,a],i)=>{ctx.beginPath();path(d3.geoCircle().center(c).radius(r)());
-  ctx.globalCompositeOperation=pal.nightMul?'multiply':'source-over';ctx.fillStyle=pal.nightMul?pal.nightMul[i]:`rgba(${pal.night},${a})`;ctx.fill()});ctx.globalCompositeOperation='source-over';
- if(d3.geoDistance(ctr,s)>1.5)return;const p=proj(s);if(!p)return;
+// The sun moves a quarter of a degree a minute, so its position is taken once a second; the projected circles and the glow
+// position are kept as long as that second and the camera stay the same (a still globe), and rebuilt when either changes.
+let nKey='',nSun=null,nPaths=[],nGlow=null;
+function nightGeo(){const d=nowDate(),key=[Math.floor(d/1000),W,H,k,rot[0],rot[1]].join();if(key===nKey)return;nKey=key;
+ const s=nSun=sunPoint(d),c=[s[0]+180,-s[1]];
+ nPaths=NIGHT.map(([r])=>{const P=new Path2D();path.context(P);path(d3.geoCircle().center(c).radius(r)());path.context(ctx);return P});
+ nGlow=d3.geoDistance(ctr,s)>1.5?null:proj(s)}
+export function drawNight(){nightGeo();
+ NIGHT.forEach(([r,a],i)=>{
+  ctx.globalCompositeOperation=pal.nightMul?'multiply':'source-over';ctx.fillStyle=pal.nightMul?pal.nightMul[i]:`rgba(${pal.night},${a})`;ctx.fill(nPaths[i])});ctx.globalCompositeOperation='source-over';
+ const p=nGlow;if(!p)return;
  const g=ctx.createRadialGradient(p[0],p[1],0,p[0],p[1],18);g.addColorStop(0,'rgba(255,236,140,.95)');g.addColorStop(1,'rgba(255,236,140,0)');
  ctx.beginPath();ctx.arc(p[0],p[1],18,0,6.2832);ctx.fillStyle=g;ctx.fill();ctx.beginPath();ctx.arc(p[0],p[1],4,0,6.2832);ctx.fillStyle='#fff6c2';ctx.fill()}
 // Zone regions reach a little past the country, so they are clipped to its outline. Each group is stroked and then filled over
