@@ -97,7 +97,8 @@ python3 -m unittest discover tests  # borders in the zoomed-in data stay shared 
 - Time zone rules and history: the IANA time zone database, via Python's `tzdata`. Zone boundaries come from
   [timezonefinder](https://github.com/jannikmi/timezonefinder).
 - Cities: [GeoNames](https://www.geonames.org/) (CC BY 4.0), via the `geonamescache` package.
-- Rendering: [d3](https://d3js.org) 7.9.0 (ISC license), bundled as `site/d3.min.js`.
+- Rendering: [d3-geo](https://github.com/d3/d3-geo) 3.1.1 (ISC license), bundled with the few functions the page uses as
+  `site/d3-geo.min.js` (27 KB; rebuild with `npm install && npm run build` in `tools/d3-geo`).
 
 Time zone borders and daylight saving rules change. Check an official source before relying on this for anything important.
 

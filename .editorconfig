@@ -23,7 +23,7 @@ indent_size = 2
 indent_style = space
 
 # Generated or vendored: leave untouched.
-[site/{d3.min.js,countries.js,cities.*.json,detail-*.json}]
+[site/{d3-geo.min.js,countries.js,cities.*.json,detail-*.json}]
 charset = unset
 end_of_line = unset
 insert_final_newline = unset
