@@ -1,0 +1,18 @@
+# Weekly update pull requests for the few dependencies the project has.
+version: 2
+updates:
+  # d3-geo and esbuild, which build site/d3-geo.min.js (tools/d3-geo).  A bump changes only the lockfile: run `npm run build`
+  # in that folder and commit the new site/d3-geo.min.js with it.
+  - package-ecosystem: npm
+    directory: /tools/d3-geo
+    schedule:
+      interval: weekly
+    groups:
+      bundle:
+        patterns: ["*"]
+
+  # the nginx image in docker-compose.yml
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule:
+      interval: weekly
