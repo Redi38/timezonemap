@@ -1,0 +1,3 @@
+# For working on the code: the formatter for tools/ (see pyproject.toml).
+-r requirements.txt
+ruff==0.17.1

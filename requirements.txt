@@ -1,0 +1,7 @@
+# Python packages for the data tools in tools/ and the tests in tests/ (pip install -r requirements.txt).
+# Exact versions, so a rebuild of the generated data gives the same result everywhere; Dependabot proposes updates.
+geonamescache==3.0.2
+numpy==2.5.4
+shapely==2.2.0
+timezonefinder==9.0.0
+tzdata==2026.5

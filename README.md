@@ -63,7 +63,7 @@ docker compose up -d                              # http://localhost:8080
 The generated files are committed, so you only need this to update the map or the city list.
 
 ```sh
-pip install timezonefinder "shapely>=2.1" tzdata geonamescache
+pip install -r requirements.txt
 
 python3 tools/build_zones.py             # per-zone geometry -> site/countries.js
 python3 tools/build_zones.py --detail    # zoomed-in outlines -> site/detail-1/2.<hash>.json
@@ -79,7 +79,7 @@ Each script's docstring explains its inputs and output format.
 <summary><b>Development</b></summary>
 
 ```sh
-pip install ruff
+pip install -r requirements-dev.txt   # the tools' packages and ruff, at pinned versions
 ruff format tools            # format the Python tools (settings in pyproject.toml)
 ruff format --check tools    # check only
 

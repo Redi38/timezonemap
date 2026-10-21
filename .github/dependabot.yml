@@ -16,3 +16,10 @@ updates:
     directory: /
     schedule:
       interval: weekly
+
+  # the pinned Python packages (requirements.txt, requirements-dev.txt).  Regenerating the data with a new version can change it,
+  # so run the tools and the tests (see Development in the README) before merging.
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
