@@ -3,5 +3,5 @@
 geonamescache==3.0.2
 numpy==2.5.4
 shapely==2.2.0
-timezonefinder==9.0.0
+timezonefinder==9.2.0
 tzdata==2026.5
