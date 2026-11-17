@@ -6,9 +6,9 @@
     "build": "esbuild entry.js --bundle --minify --format=iife --global-name=d3 --legal-comments=none --banner:js=\"/* d3-geo 3.1.1, d3-array 3.2.4, internmap 2.0.3: ISC, Copyright 2010-2024 Mike Bostock (https://d3js.org). Parts of d3-geo derive from GeographicLib: MIT, Copyright 2008-2012 Charles Karney. */\" --outfile=../../site/d3-geo.min.js"
   },
   "dependencies": {
-    "d3-geo": "3.1.1"
+    "d3-geo": "3.1.2"
   },
   "devDependencies": {
-    "esbuild": "0.25.10"
+    "esbuild": "0.28.2"
   }
 }
