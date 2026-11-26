@@ -24,6 +24,7 @@ function render(){if(!showChg){box.hidden=true;return}
  if(html!==last){last=html;box.innerHTML=html}box.hidden=false}
 function go(f){setAuto(false);flyTo(f.c,Math.max(1,Math.min(7,.62/Math.sin(Math.min(1.3,f.br||.3)))))}
 function toggle(v){setShowChg(v);btn.setAttribute('aria-pressed',v);btn.textContent=v?'Hide clock changes':'Show clock changes';last='';render()}
+export const off=()=>{if(showChg)toggle(false)};   // the map was switched
 export function init(){btn.onclick=()=>toggle(!showChg);
  box.addEventListener('click',e=>{if(e.target.closest('.h button'))return toggle(false);const a=e.target.closest('a[data-i]');if(a)go(shown[+a.dataset.i])});
  box.addEventListener('keydown',e=>{if(e.key==='Enter'){const a=e.target.closest('a[data-i]');if(a)go(shown[+a.dataset.i])}});

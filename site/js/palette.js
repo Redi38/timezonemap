@@ -22,3 +22,7 @@ export const onPalette=f=>{subs.push(f)};
 export function setLight(v){const n=v?LIGHT:DARK;if(pal.id===n.id)return;Object.assign(pal,n);subs.forEach(f=>f())}
 // The colour of a zone with UTC offset off (hours): one hue per hour round the colour wheel.
 export const landColor=(off,hover)=>`hsl(${(off*15+360)%360},${pal.s}%,${hover?pal.lh:pal.l}%)`;
+// The Currencies map: one fill per colour slot.  tools/build_currencies.py gives currencies that touch different slots, so the
+// slots only have to be easy to tell apart (tests/test_currencies.py checks that there are enough of them).
+export const CUR_HUES=[212,28,142,322,52,268,176,2];
+export const currencyColor=(slot,hover)=>`hsl(${CUR_HUES[slot%CUR_HUES.length]},${pal.s}%,${hover?pal.lh:pal.l}%)`;

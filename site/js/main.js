@@ -19,6 +19,9 @@
 //   daylight.js sunrise, sunset, day length in words for a place (tz, sun)
 //   legend.js   the colour legend: point at an offset to light up its zones (view)
 //   theme.js    sun/moon button, saved choice               (palette)
+//   mode.js     which map is showing, kept in the URL hash   (no imports)
+//   money.js    the Currencies map: data, texts, legend     (zones, view, anim, palette)
+//   maps.js     the map tabs; clean state on a switch       (mode, view, search, changes, compare, money)
 import {refresh,stamp} from './zones.js';
 import {size,addOverlay} from './view.js';
 import {tipUpdate} from './tooltip.js';
@@ -30,6 +33,8 @@ import * as compare from './compare.js';
 import * as timeslider from './timeslider.js';
 import * as theme from './theme.js';
 import * as legendfocus from './legend.js';
+import * as money from './money.js';
+import * as maps from './maps.js';
 import {landColor,onPalette} from './palette.js';
 theme.init();   // first: it sets the globe's palette before anything is drawn
 const lb=document.getElementById('lb');
@@ -37,6 +42,6 @@ function legend(){const st=[];for(let o=-12;o<=14;o++)st.push(landColor(o));lb.s
 legend();onPalette(legend);
 window.addEventListener('resize',size);if(window.ResizeObserver)new ResizeObserver(size).observe(document.getElementById('wrap'));   // any layout change, not only the window
 size();refresh();setInterval(stamp,1000);setInterval(refresh,60000);
-input.init();search.init();changes.init();compare.init();timeslider.init();legendfocus.init();
+input.init();search.init();changes.init();compare.init();timeslider.init();legendfocus.init();money.init();maps.init();
 addOverlay(search.drawSel);addOverlay(compare.draw);addOverlay(()=>tipUpdate(input.getMouse(),input.isDragging()));
 start(input.isDragging);

@@ -42,6 +42,7 @@ function show(){const [a,b]=pick;setAuto(false);
  else{const c=a||b;if(c)flyTo(c.ll,Math.max(k/k0,3))}}
 function choose(i,c){if(!c)return;pick[i]=c;inp[i].value=`${c.n}, ${c.cn}`;hideSug(i);inp[i].blur();show();render()}
 function toggle(v){open=v;btn.setAttribute('aria-pressed',v);box.hidden=!v;if(v){loadCities();render();const e=inp.find(x=>!x.value)||inp[0];if(matchMedia('(pointer:fine)').matches)e.focus()}}
+export const close=()=>{if(open)toggle(false)};   // the map was switched
 export function init(){
  box.innerHTML=`<div class="h"><span>Compare cities</span><button class="x" aria-label="Close" title="Close">×</button></div>`+
   [0,1].map(i=>`<div class="in"><i style="background:${COL[i]}"></i><input data-i="${i}" placeholder="${i?'Second':'First'} city" aria-label="${i?'Second':'First'} city" autocomplete="off" spellcheck="false"><ul class="sug" data-i="${i}" role="listbox"></ul></div>`).join('')+
