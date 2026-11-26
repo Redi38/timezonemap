@@ -2,7 +2,7 @@
 # Exact versions, so a rebuild of the generated data gives the same result everywhere; Dependabot proposes updates.
 babel==2.18.0
 geonamescache==3.0.2
-numpy==2.5.4
+numpy==2.5.5
 shapely==2.2.0
 timezonefinder==9.0.0
 tzdata==2026.5
